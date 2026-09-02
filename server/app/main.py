@@ -25,9 +25,9 @@ async def lifespan(app: FastAPI):
     worker = ThumbnailWorker(SessionLocal)
     app.state.thumb_worker = worker
     await worker.start()
-    mdns = discovery.register(settings.port)
+    mdns = await discovery.register(settings.port)
     yield
-    discovery.unregister(mdns)
+    await discovery.unregister(mdns)
     await worker.stop()
 
 

@@ -4,7 +4,8 @@ can find it LocalSend-style instead of asking for an IP address."""
 import logging
 import socket
 
-from zeroconf import ServiceInfo, Zeroconf
+from zeroconf import ServiceInfo
+from zeroconf.asyncio import AsyncZeroconf
 
 log = logging.getLogger("photobank.discovery")
 
@@ -22,7 +23,7 @@ def _local_ip() -> str:
         s.close()
 
 
-def register(port: int) -> tuple[Zeroconf, ServiceInfo] | None:
+async def register(port: int) -> tuple[AsyncZeroconf, ServiceInfo] | None:
     try:
         hostname = socket.gethostname()
         ip = _local_ip()
@@ -34,21 +35,21 @@ def register(port: int) -> tuple[Zeroconf, ServiceInfo] | None:
             properties={"name": hostname, "version": "1"},
             server=f"{hostname}.local.",
         )
-        zc = Zeroconf()
-        zc.register_service(info)
+        azc = AsyncZeroconf()
+        await azc.async_register_service(info)
         log.info("mDNS: announcing Photobank at %s:%s", ip, port)
-        return zc, info
+        return azc, info
     except Exception:
         log.exception("mDNS registration failed - discovery disabled, server still reachable by IP")
         return None
 
 
-def unregister(handle: tuple[Zeroconf, ServiceInfo] | None) -> None:
+async def unregister(handle: tuple[AsyncZeroconf, ServiceInfo] | None) -> None:
     if handle is None:
         return
-    zc, info = handle
+    azc, info = handle
     try:
-        zc.unregister_service(info)
-        zc.close()
+        await azc.async_unregister_service(info)
+        await azc.async_close()
     except Exception:
         pass
