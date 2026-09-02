@@ -158,36 +158,60 @@ class SyncService {
 
     // backfill: photos synced before live-photo support got their video half
     if (!cancelRequested) {
-      final candidates = assets
-          .where((a) => a.isLivePhoto && _synced.containsKey(a.id) && !_liveDone.contains(a.id))
-          .toList();
-      if (candidates.isNotEmpty) {
-        yield SyncProgress(done, todo.length, uploaded, skipped, failed,
-            'Live Photo videos (${candidates.length})…');
-        final byChecksum = {for (final a in candidates) _synced[a.id]!: a};
-        final existing = await api.existingChecksums(byChecksum.keys.toList());
-        for (final entry in byChecksum.entries) {
-          if (cancelRequested) break;
-          final detail = existing[entry.key];
-          if (detail == null) continue;
-          if (detail.hasLiveVideo || detail.assetId.isEmpty) {
-            _liveDone.add(entry.value.id);
-            continue;
-          }
-          try {
-            final still = await entry.value.originFile;
-            final live = await entry.value.originFileWithSubtype;
-            if (live != null && live.path != still?.path) {
-              await api.uploadLiveVideo(detail.assetId, live);
-            }
-            _liveDone.add(entry.value.id);
-          } catch (_) {
-            // retry next sync
-          }
-        }
-        await _save();
+      yield* syncLiveVideos();
+    }
+  }
+
+  /// Uploads missing Live Photo video halves for already-synced stills.
+  /// [verifyAll] ignores the local done-cache and re-checks every synced
+  /// live photo against the server - use it to repair earlier syncs.
+  Stream<SyncProgress> syncLiveVideos({bool verifyAll = false}) async* {
+    if (verifyAll) cancelRequested = false; // standalone run; inside sync() we inherit it
+    final assets = await _allAssets();
+    final candidates = assets
+        .where((a) =>
+            a.isLivePhoto &&
+            _synced.containsKey(a.id) &&
+            (verifyAll || !_liveDone.contains(a.id)))
+        .toList();
+    if (candidates.isEmpty) return;
+
+    final byChecksum = {for (final a in candidates) _synced[a.id]!: a};
+    final existing = await api.existingChecksums(byChecksum.keys.toList());
+    final missing = <MapEntry<String, AssetEntity>>[];
+    for (final entry in byChecksum.entries) {
+      final detail = existing[entry.key];
+      if (detail == null) continue; // still not on server (odd) - regular sync handles it
+      if (detail.hasLiveVideo || detail.assetId.isEmpty) {
+        _liveDone.add(entry.value.id);
+      } else {
+        missing.add(entry);
       }
     }
+
+    var done = 0, uploaded = 0, failed = 0;
+    for (final entry in missing) {
+      if (cancelRequested) break;
+      final name = await entry.value.titleAsync;
+      yield SyncProgress(done, missing.length, uploaded, 0, failed, 'Live: $name');
+      try {
+        final still = await entry.value.originFile;
+        final live = await entry.value.originFileWithSubtype;
+        if (live != null && live.path != still?.path) {
+          await api.uploadLiveVideo(existing[entry.key]!.assetId, live);
+          uploaded++;
+        }
+        _liveDone.add(entry.value.id);
+      } on ApiException catch (e) {
+        if (e.status == 401) rethrow;
+        failed++;
+      } catch (_) {
+        failed++;
+      }
+      done++;
+      yield SyncProgress(done, missing.length, uploaded, 0, failed, 'Live: $name');
+    }
+    await _save();
   }
 
   /// Deletes from the DEVICE every asset whose checksum the server confirms

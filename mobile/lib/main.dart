@@ -491,6 +491,46 @@ class _SyncPageState extends State<SyncPage> {
     }
   }
 
+  Future<void> _verifyLivePhotos() async {
+    setState(() {
+      _syncing = true;
+      _lastResult = null;
+    });
+    try {
+      await WakelockPlus.enable();
+    } catch (_) {}
+    try {
+      SyncProgress? last;
+      await for (final p in _service.syncLiveVideos(verifyAll: true)) {
+        last = p;
+        if (mounted) setState(() => _progress = p);
+      }
+      _lastResult = last == null
+          ? 'All Live Photos already have their videos on the server.'
+          : 'Live Photos verified: ${last.uploaded} video'
+            '${last.uploaded == 1 ? '' : 's'} uploaded'
+            '${last.failed > 0 ? ', ${last.failed} failed (will retry)' : ''}.';
+    } on ApiException catch (e) {
+      if (e.status == 401) {
+        await widget.onLogout();
+        return;
+      }
+      _lastResult = 'Verification failed: ${e.message}';
+    } catch (e) {
+      _lastResult = 'Verification failed: $e';
+    } finally {
+      try {
+        await WakelockPlus.disable();
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _syncing = false;
+          _progress = null;
+        });
+      }
+    }
+  }
+
   Future<void> _freeUpSpace() async {
     final stats = _stats;
     if (stats == null || stats.backedUp == 0) return;
@@ -640,6 +680,15 @@ class _SyncPageState extends State<SyncPage> {
                           label: Padding(
                             padding: const EdgeInsets.all(12),
                             child: Text('Free up space (${stats.backedUp} backed up)'),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: stats.backedUp == 0 ? null : _verifyLivePhotos,
+                          icon: const Icon(Icons.motion_photos_on),
+                          label: const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: Text('Verify Live Photos'),
                           ),
                         ),
                       ],
