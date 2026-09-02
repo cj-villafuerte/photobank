@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -80,6 +81,31 @@ class SyncService {
     return DeviceStats(assets.length, backedUp);
   }
 
+  /// Fetches the original file, surfacing iCloud download progress and
+  /// giving up after [timeout] so one offloaded item can't hang the sync.
+  Future<File?> _fetchOriginal(AssetEntity asset,
+      {void Function(String status)? onStatus,
+      Duration timeout = const Duration(minutes: 3)}) async {
+    final handler = PMProgressHandler();
+    final sub = handler.stream.listen((s) {
+      if (s.state == PMRequestState.loading) {
+        onStatus?.call('downloading from iCloud ${(s.progress * 100).clamp(0, 100).round()}%');
+      }
+    });
+    try {
+      return await asset
+          .loadFile(isOrigin: true, progressHandler: handler)
+          .timeout(timeout);
+    } on TimeoutException {
+      onStatus?.call('iCloud download timed out - skipped, will retry');
+      return null;
+    } catch (_) {
+      return null;
+    } finally {
+      await sub.cancel();
+    }
+  }
+
   static Future<String> _sha256OfFile(File file) async {
     final output = AccumulatorSink<Digest>();
     final input = sha256.startChunkedConversion(output);
@@ -95,6 +121,7 @@ class SyncService {
   /// [oldestFirst] uploads the back catalog before recent shots.
   Stream<SyncProgress> sync({
     void Function(int sent, int total)? onFileProgress,
+    void Function(String status)? onStatus,
     bool oldestFirst = false,
   }) async* {
     cancelRequested = false;
@@ -110,11 +137,13 @@ class SyncService {
       final name = await asset.titleAsync;
       yield SyncProgress(done, todo.length, uploaded, skipped, failed, name);
       try {
-        final file = await asset.originFile;
+        final file = await _fetchOriginal(asset, onStatus: onStatus);
         if (file == null) {
           failed++;
         } else {
-          final checksum = await _sha256OfFile(file);
+          onStatus?.call('checking…');
+          final checksum =
+              await _sha256OfFile(file).timeout(const Duration(minutes: 10));
           final existing = await api.existingChecksums([checksum]);
           String? serverId;
           var serverHasLive = false;
@@ -132,7 +161,8 @@ class SyncService {
           // Live Photos: ship the ~3s video half too (iOS only)
           if (asset.isLivePhoto && serverId != null && !serverHasLive) {
             try {
-              final live = await asset.originFileWithSubtype;
+              final live = await asset.originFileWithSubtype
+                  .timeout(const Duration(minutes: 3));
               if (live != null && live.path != file.path) {
                 await api.uploadLiveVideo(serverId, live);
                 _liveDone.add(asset.id);
@@ -195,8 +225,10 @@ class SyncService {
       final name = await entry.value.titleAsync;
       yield SyncProgress(done, missing.length, uploaded, 0, failed, 'Live: $name');
       try {
-        final still = await entry.value.originFile;
-        final live = await entry.value.originFileWithSubtype;
+        final still =
+            await entry.value.originFile.timeout(const Duration(minutes: 3));
+        final live = await entry.value.originFileWithSubtype
+            .timeout(const Duration(minutes: 3));
         if (live != null && live.path != still?.path) {
           await api.uploadLiveVideo(existing[entry.key]!.assetId, live);
           uploaded++;

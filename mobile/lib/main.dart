@@ -398,6 +398,7 @@ class _SyncPageState extends State<SyncPage> {
   SyncProgress? _progress;
   int _fileSent = 0;
   int _fileTotal = 0;
+  String _fileStatus = 'preparing…';
   bool _syncing = false;
   bool _oldestFirst = false;
   bool _bgBackup = false;
@@ -443,7 +444,9 @@ class _SyncPageState extends State<SyncPage> {
       SyncProgress? last;
       await for (final p in _service.sync(
           oldestFirst: _oldestFirst,
-          onFileProgress: (sent, total) {
+          onStatus: (status) {
+        if (mounted) setState(() => _fileStatus = status);
+      }, onFileProgress: (sent, total) {
         if (mounted) {
           setState(() {
             _fileSent = sent;
@@ -457,6 +460,7 @@ class _SyncPageState extends State<SyncPage> {
             _progress = p;
             _fileSent = 0;
             _fileTotal = 0;
+            _fileStatus = 'preparing…';
           });
         }
       }
@@ -623,7 +627,7 @@ class _SyncPageState extends State<SyncPage> {
                               ? '${_progress!.currentName} - '
                                 '${(_fileSent / _fileTotal * 100).clamp(0, 100).toStringAsFixed(0)}% '
                                 'of ${_fmtBytes(_fileTotal)}'
-                              : '${_progress!.currentName} - preparing…',
+                              : '${_progress!.currentName} - $_fileStatus',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall,
