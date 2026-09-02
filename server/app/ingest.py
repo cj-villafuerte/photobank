@@ -10,7 +10,9 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageOps
+import io
+
+from PIL import Image, ImageCms, ImageOps
 from sqlalchemy import select
 
 from . import storage
@@ -153,12 +155,30 @@ async def extract_video_metadata(path: Path) -> dict:
     return meta
 
 
+def _to_srgb(im: Image.Image) -> Image.Image:
+    """Convert wide-gamut images (e.g. iPhone Display-P3 HEIC) to sRGB.
+
+    Without this, dropping the ICC profile leaves colors looking washed out.
+    """
+    icc = im.info.get("icc_profile")
+    if not icc or im.mode != "RGB":
+        return im
+    try:
+        src = ImageCms.ImageCmsProfile(io.BytesIO(icc))
+        dst = ImageCms.createProfile("sRGB")
+        converted = ImageCms.profileToProfile(im, src, dst, outputMode="RGB")
+        return converted if converted is not None else im
+    except Exception:
+        return im
+
+
 def _generate_image_thumbs(original: Path, out_dir: Path) -> None:
     """Runs in a thread."""
     with Image.open(original) as im:
         im = ImageOps.exif_transpose(im)
         if im.mode not in ("RGB", "RGBA"):
             im = im.convert("RGB")
+        im = _to_srgb(im)
         preview = im.copy()
         preview.thumbnail((PREVIEW_SIZE, PREVIEW_SIZE))
         preview.save(out_dir / "preview.webp", "WEBP", quality=80)
