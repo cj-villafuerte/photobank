@@ -1,9 +1,12 @@
+import 'package:background_fetch/background_fetch.dart';
 import 'package:bonsoir/bonsoir.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'api.dart';
+import 'background.dart';
 import 'library_page.dart';
 import 'sync_service.dart';
 import 'theme.dart';
@@ -11,6 +14,8 @@ import 'theme.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const PhotobankApp());
+  initBackgroundBackup();
+  BackgroundFetch.registerHeadlessTask(backgroundFetchHeadlessTask);
 }
 
 class PhotobankApp extends StatelessWidget {
@@ -395,6 +400,8 @@ class _SyncPageState extends State<SyncPage> {
   int _fileTotal = 0;
   bool _syncing = false;
   bool _oldestFirst = false;
+  bool _bgBackup = false;
+  String? _lastBgSync;
   bool _permissionDenied = false;
   String? _lastResult;
 
@@ -407,7 +414,13 @@ class _SyncPageState extends State<SyncPage> {
   Future<void> _load() async {
     await _service.init();
     final prefs = await SharedPreferences.getInstance();
-    if (mounted) setState(() => _oldestFirst = prefs.getBool('sync_oldest_first') ?? false);
+    if (mounted) {
+      setState(() {
+        _oldestFirst = prefs.getBool('sync_oldest_first') ?? false;
+        _bgBackup = prefs.getBool('bg_backup') ?? false;
+        _lastBgSync = prefs.getString('last_bg_sync');
+      });
+    }
     final ok = await _service.requestPermission();
     if (!ok) {
       setState(() => _permissionDenied = true);
@@ -422,6 +435,10 @@ class _SyncPageState extends State<SyncPage> {
       _syncing = true;
       _lastResult = null;
     });
+    // keep the screen awake so iOS doesn't suspend the app mid-backup
+    try {
+      await WakelockPlus.enable();
+    } catch (_) {}
     try {
       SyncProgress? last;
       await for (final p in _service.sync(
@@ -460,6 +477,9 @@ class _SyncPageState extends State<SyncPage> {
     } catch (e) {
       _lastResult = 'Sync failed: $e';
     } finally {
+      try {
+        await WakelockPlus.disable();
+      } catch (_) {}
       if (mounted) {
         final stats = await _service.stats();
         setState(() {
@@ -578,6 +598,11 @@ class _SyncPageState extends State<SyncPage> {
                           onPressed: () => _service.cancelRequested = true,
                           child: const Text('Stop'),
                         ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Screen stays awake while backing up.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                       ] else ...[
                         Row(
                           children: [
@@ -618,6 +643,20 @@ class _SyncPageState extends State<SyncPage> {
                           ),
                         ),
                       ],
+                      const SizedBox(height: 16),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Background backup'),
+                        subtitle: Text(
+                          _bgLine(),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        value: _bgBackup,
+                        onChanged: (v) async {
+                          setState(() => _bgBackup = v);
+                          await setBackgroundBackupEnabled(v);
+                        },
+                      ),
                       if (_lastResult != null) ...[
                         const SizedBox(height: 20),
                         Card(
@@ -635,6 +674,19 @@ class _SyncPageState extends State<SyncPage> {
                   ),
                 ),
     );
+  }
+
+  String _bgLine() {
+    const base = 'iOS grants short windows (works best charging on Wi-Fi; '
+        'keep Background App Refresh on).';
+    final last = _lastBgSync;
+    if (last == null) return base;
+    final parts = last.split('|');
+    final when = DateTime.tryParse(parts[0]);
+    if (when == null) return base;
+    return '$base Last run: ${when.month}/${when.day} '
+        '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}'
+        '${parts.length > 1 ? ' (${parts[1]})' : ''}';
   }
 
   static String _fmtBytes(int bytes) {
