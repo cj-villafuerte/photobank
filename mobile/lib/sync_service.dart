@@ -89,10 +89,17 @@ class SyncService {
 
   /// Uploads everything not yet on the server. Yields progress per asset;
   /// [onFileProgress] fires with byte-level progress of the current upload.
-  Stream<SyncProgress> sync({void Function(int sent, int total)? onFileProgress}) async* {
+  /// [oldestFirst] uploads the back catalog before recent shots.
+  Stream<SyncProgress> sync({
+    void Function(int sent, int total)? onFileProgress,
+    bool oldestFirst = false,
+  }) async* {
     cancelRequested = false;
     final assets = await _allAssets();
-    final todo = assets.where((a) => !_synced.containsKey(a.id)).toList();
+    final todo = assets.where((a) => !_synced.containsKey(a.id)).toList()
+      ..sort((a, b) => oldestFirst
+          ? a.createDateTime.compareTo(b.createDateTime)
+          : b.createDateTime.compareTo(a.createDateTime));
     var done = 0, uploaded = 0, skipped = 0, failed = 0;
 
     for (final asset in todo) {

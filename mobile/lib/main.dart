@@ -394,6 +394,7 @@ class _SyncPageState extends State<SyncPage> {
   int _fileSent = 0;
   int _fileTotal = 0;
   bool _syncing = false;
+  bool _oldestFirst = false;
   bool _permissionDenied = false;
   String? _lastResult;
 
@@ -405,6 +406,8 @@ class _SyncPageState extends State<SyncPage> {
 
   Future<void> _load() async {
     await _service.init();
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() => _oldestFirst = prefs.getBool('sync_oldest_first') ?? false);
     final ok = await _service.requestPermission();
     if (!ok) {
       setState(() => _permissionDenied = true);
@@ -421,7 +424,9 @@ class _SyncPageState extends State<SyncPage> {
     });
     try {
       SyncProgress? last;
-      await for (final p in _service.sync(onFileProgress: (sent, total) {
+      await for (final p in _service.sync(
+          oldestFirst: _oldestFirst,
+          onFileProgress: (sent, total) {
         if (mounted) {
           setState(() {
             _fileSent = sent;
@@ -574,6 +579,25 @@ class _SyncPageState extends State<SyncPage> {
                           child: const Text('Stop'),
                         ),
                       ] else ...[
+                        Row(
+                          children: [
+                            Text('Sync order', style: Theme.of(context).textTheme.bodyMedium),
+                            const Spacer(),
+                            SegmentedButton<bool>(
+                              segments: const [
+                                ButtonSegment(value: false, label: Text('Newest first')),
+                                ButtonSegment(value: true, label: Text('Oldest first')),
+                              ],
+                              selected: {_oldestFirst},
+                              onSelectionChanged: (sel) async {
+                                setState(() => _oldestFirst = sel.first);
+                                final prefs = await SharedPreferences.getInstance();
+                                await prefs.setBool('sync_oldest_first', sel.first);
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
                         FilledButton.icon(
                           onPressed: stats.pending == 0 ? null : _sync,
                           icon: const Icon(Icons.cloud_upload),
