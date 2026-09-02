@@ -1,0 +1,53 @@
+import logging
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pillow_heif import register_heif_opener
+
+from . import storage
+from .db import SessionLocal
+from .ingest import ThumbnailWorker
+from .routers import admin, albums, assets, auth
+
+logging.basicConfig(level=logging.INFO)
+
+WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    register_heif_opener()
+    storage.ensure_dirs()
+    worker = ThumbnailWorker(SessionLocal)
+    app.state.thumb_worker = worker
+    await worker.start()
+    yield
+    await worker.stop()
+
+
+app = FastAPI(title="Photobank", lifespan=lifespan)
+
+app.include_router(auth.router)
+app.include_router(assets.router)
+app.include_router(albums.router)
+app.include_router(admin.router)
+
+
+@app.get("/api/health")
+async def health():
+    return {"status": "ok"}
+
+
+if WEB_DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="static-assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa(full_path: str):
+        # deep links (/albums/xyz) fall through to the SPA entry point
+        candidate = WEB_DIST / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(WEB_DIST / "index.html")

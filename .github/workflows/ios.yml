@@ -1,0 +1,38 @@
+name: Build iOS IPA (unsigned, for Sideloadly)
+
+on:
+  push:
+    branches: [main]
+    paths: ["mobile/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter build ios --release --no-codesign
+
+      # package the .app into an unsigned .ipa (Payload zip) for Sideloadly
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r photobank.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: photobank-ipa
+          path: mobile/photobank.ipa
+          retention-days: 30

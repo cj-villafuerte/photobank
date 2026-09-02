@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]>=2.0
+asyncpg
+alembic
+psycopg[binary]
+pydantic-settings
+email-validator
+python-multipart
+Pillow
+pillow-heif
+argon2-cffi
+PyJWT
