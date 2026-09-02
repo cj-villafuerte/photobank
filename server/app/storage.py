@@ -35,13 +35,17 @@ def tmp_path() -> Path:
     return settings.tmp_dir / f"upload-{uuid.uuid4().hex}"
 
 
-def delete_asset_files(owner_id: uuid.UUID, asset_id: uuid.UUID, file_path: str) -> None:
-    """Remove original + thumbnail directory; missing files are not an error."""
-    original = absolute_from_root(file_path)
-    try:
-        original.unlink(missing_ok=True)
-    except OSError:
-        pass
+def delete_asset_files(
+    owner_id: uuid.UUID, asset_id: uuid.UUID, file_path: str, live_video_path: str | None = None
+) -> None:
+    """Remove original + live video + thumbnail directory; missing files are not an error."""
+    for rel in (file_path, live_video_path):
+        if rel is None:
+            continue
+        try:
+            absolute_from_root(rel).unlink(missing_ok=True)
+        except OSError:
+            pass
     tdir = settings.thumbs_dir / str(owner_id) / str(asset_id)
     if tdir.is_dir():
         for f in tdir.iterdir():

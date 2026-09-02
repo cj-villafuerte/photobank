@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:video_player/video_player.dart';
 
 import 'api.dart';
 
@@ -152,6 +153,11 @@ class _BucketSection extends StatelessWidget {
                           right: 4, top: 4,
                           child: Icon(Icons.play_circle_fill, size: 18, shadows: [Shadow(blurRadius: 4)]),
                         ),
+                      if (a.hasLiveVideo)
+                        const Positioned(
+                          left: 4, top: 4,
+                          child: Icon(Icons.motion_photos_on, size: 16, shadows: [Shadow(blurRadius: 4)]),
+                        ),
                       if (a.isFavorite)
                         const Positioned(
                           left: 4, bottom: 4,
@@ -184,6 +190,51 @@ class _AssetViewerState extends State<AssetViewer> {
   late int _index = widget.initialIndex;
   bool _downloading = false;
   double _downloadPct = 0;
+  VideoPlayerController? _video;
+  bool _videoIsLive = false;
+
+  @override
+  void dispose() {
+    _video?.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _stopVideo() {
+    _video?.dispose();
+    _video = null;
+    _videoIsLive = false;
+  }
+
+  Future<void> _playUrl(String url, {required bool live}) async {
+    _video?.dispose();
+    final c = VideoPlayerController.networkUrl(Uri.parse(url),
+        httpHeaders: widget.api.authHeaders);
+    _video = c;
+    _videoIsLive = live;
+    try {
+      await c.initialize();
+      if (live) {
+        c.addListener(() {
+          // live photos play once, then fall back to the still
+          if (c.value.isInitialized &&
+              !c.value.isPlaying &&
+              c.value.position >= c.value.duration &&
+              mounted) {
+            setState(_stopVideo);
+          }
+        });
+      }
+      await c.play();
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (mounted) {
+        setState(_stopVideo);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Playback failed: $e')));
+      }
+    }
+  }
 
   Future<void> _downloadCurrent() async {
     final asset = widget.assets[_index];
@@ -230,6 +281,20 @@ class _AssetViewerState extends State<AssetViewer> {
         backgroundColor: Colors.black54,
         title: Text('${_index + 1} / ${widget.assets.length}'),
         actions: [
+          if (asset.hasLiveVideo)
+            IconButton(
+              icon: Icon(_videoIsLive && _video != null
+                  ? Icons.motion_photos_pause
+                  : Icons.motion_photos_on),
+              tooltip: 'Play Live Photo',
+              onPressed: () {
+                if (_video != null && _videoIsLive) {
+                  setState(_stopVideo);
+                } else {
+                  _playUrl(widget.api.liveVideoUrl(asset.id), live: true);
+                }
+              },
+            ),
           if (_downloading)
             Padding(
               padding: const EdgeInsets.all(14),
@@ -250,42 +315,51 @@ class _AssetViewerState extends State<AssetViewer> {
       body: PageView.builder(
         controller: _controller,
         itemCount: widget.assets.length,
-        onPageChanged: (i) => setState(() => _index = i),
+        onPageChanged: (i) => setState(() {
+          _index = i;
+          _stopVideo();
+        }),
         itemBuilder: (context, i) {
           final a = widget.assets[i];
+          final video = _video;
+          final showingVideo = i == _index && video != null && video.value.isInitialized;
           return Center(
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                InteractiveViewer(
-                  maxScale: 5,
-                  child: Image.network(
-                    widget.api.previewUrl(a.id),
-                    headers: widget.api.authHeaders,
-                    fit: BoxFit.contain,
-                    loadingBuilder: (_, child, progress) =>
-                        progress == null ? child : const CircularProgressIndicator(),
-                    errorBuilder: (_, _, _) => const Icon(Icons.broken_image, size: 48),
+            child: showingVideo
+                ? AspectRatio(
+                    aspectRatio: video.value.aspectRatio,
+                    child: GestureDetector(
+                      onTap: () => setState(() =>
+                          video.value.isPlaying ? video.pause() : video.play()),
+                      child: VideoPlayer(video),
+                    ),
+                  )
+                : Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      InteractiveViewer(
+                        maxScale: 5,
+                        child: Image.network(
+                          widget.api.previewUrl(a.id),
+                          headers: widget.api.authHeaders,
+                          fit: BoxFit.contain,
+                          loadingBuilder: (_, child, progress) =>
+                              progress == null ? child : const CircularProgressIndicator(),
+                          errorBuilder: (_, _, _) => const Icon(Icons.broken_image, size: 48),
+                        ),
+                      ),
+                      if (a.assetType == 'video')
+                        IconButton(
+                          iconSize: 72,
+                          color: Colors.white70,
+                          icon: const Icon(Icons.play_circle_outline),
+                          onPressed: () =>
+                              _playUrl(widget.api.originalUrl(a.id), live: false),
+                        ),
+                    ],
                   ),
-                ),
-                if (a.assetType == 'video')
-                  const Icon(Icons.play_circle_outline, size: 72, color: Colors.white70),
-              ],
-            ),
           );
         },
       ),
-      bottomNavigationBar: asset.assetType == 'video'
-          ? Container(
-              color: Colors.black54,
-              padding: const EdgeInsets.all(10),
-              child: const Text(
-                'Video preview - use the download button to save it to Photos and play it there.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: Colors.white70),
-              ),
-            )
-          : null,
     );
   }
 }

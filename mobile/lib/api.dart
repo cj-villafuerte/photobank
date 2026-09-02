@@ -37,7 +37,9 @@ class RemoteAsset {
   final DateTime takenAt;
   final bool isFavorite;
   final double? durationSec;
-  const RemoteAsset(this.id, this.assetType, this.takenAt, this.isFavorite, this.durationSec);
+  final bool hasLiveVideo;
+  const RemoteAsset(this.id, this.assetType, this.takenAt, this.isFavorite, this.durationSec,
+      this.hasLiveVideo);
 
   factory RemoteAsset.fromJson(Map<String, dynamic> j) => RemoteAsset(
         j['id'] as String,
@@ -45,7 +47,20 @@ class RemoteAsset {
         DateTime.parse(j['taken_at'] as String).toLocal(),
         j['is_favorite'] as bool? ?? false,
         (j['duration_sec'] as num?)?.toDouble(),
+        j['has_live_video'] as bool? ?? false,
       );
+}
+
+class ExistsDetail {
+  final String assetId;
+  final bool hasLiveVideo;
+  const ExistsDetail(this.assetId, this.hasLiveVideo);
+}
+
+class UploadOutcome {
+  final bool isNew;
+  final String? assetId;
+  const UploadOutcome(this.isNew, this.assetId);
 }
 
 class ApiException implements Exception {
@@ -96,9 +111,9 @@ class PhotobankApi {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
-  /// Returns the subset of [checksums] the server already has.
-  Future<Set<String>> existingChecksums(List<String> checksums) async {
-    final existing = <String>{};
+  /// For each checksum the server already has: its asset id + live-video state.
+  Future<Map<String, ExistsDetail>> existingChecksums(List<String> checksums) async {
+    final existing = <String, ExistsDetail>{};
     // server caps the list at 2000 per request
     for (var i = 0; i < checksums.length; i += 1000) {
       final batch = checksums.sublist(i, i + 1000 > checksums.length ? checksums.length : i + 1000);
@@ -108,13 +123,21 @@ class PhotobankApi {
         body: jsonEncode({'checksums': batch}),
       );
       if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
-      existing.addAll((jsonDecode(res.body)['existing'] as List).cast<String>());
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      for (final d in (body['details'] as List? ?? [])) {
+        existing[d['checksum'] as String] =
+            ExistsDetail(d['asset_id'] as String, d['has_live_video'] as bool? ?? false);
+      }
+      // older servers only send 'existing' checksums without details
+      for (final c in (body['existing'] as List? ?? []).cast<String>()) {
+        existing.putIfAbsent(c, () => const ExistsDetail('', true));
+      }
     }
     return existing;
   }
 
-  /// Uploads one file; returns true if newly stored, false if it was a duplicate.
-  Future<bool> upload(
+  /// Uploads one file; reports whether it was newly stored and its server id.
+  Future<UploadOutcome> upload(
     File file,
     String filename,
     DateTime? takenAt, {
@@ -130,10 +153,27 @@ class PhotobankApi {
     }
     final streamed = await req.send().timeout(const Duration(minutes: 10));
     final res = await http.Response.fromStream(streamed);
-    if (res.statusCode == 201) return true;
-    if (res.statusCode == 200) return false; // duplicate
+    if (res.statusCode == 201 || res.statusCode == 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      return UploadOutcome(res.statusCode == 201, body['asset_id'] as String?);
+    }
     throw ApiException(res.statusCode, _detail(res));
   }
+
+  /// Attaches the video half of a Live Photo to an already-uploaded still.
+  Future<void> uploadLiveVideo(String assetId, File file) async {
+    final req = http.MultipartRequest('POST', _u('/api/assets/$assetId/live-video'));
+    req.headers.addAll(authHeaders);
+    req.files.add(await http.MultipartFile.fromPath('file', file.path, filename: 'live.mov'));
+    final streamed = await req.send().timeout(const Duration(minutes: 10));
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw ApiException(res.statusCode, _detail(res));
+    }
+  }
+
+  String liveVideoUrl(String id) => '$baseUrl/api/assets/$id/live-video';
+  String originalUrl(String id) => '$baseUrl/api/assets/$id/original';
 
   Map<String, String> get authHeaders =>
       {if (token != null) 'Authorization': 'Bearer $token'};

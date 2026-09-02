@@ -46,6 +46,7 @@ class AssetOut(BaseModel):
     is_favorite: bool
     trashed_at: datetime | None
     thumb_status: str
+    has_live_video: bool = False
     created_at: datetime
 
 
@@ -60,6 +61,7 @@ class AssetThin(BaseModel):
     taken_at: datetime
     is_favorite: bool
     thumb_status: str
+    has_live_video: bool = False
 
 
 class UploadResult(BaseModel):
@@ -108,8 +110,15 @@ class ChecksumsIn(BaseModel):
     checksums: list[str] = Field(max_length=2000)
 
 
+class ExistsDetail(BaseModel):
+    checksum: str
+    asset_id: uuid.UUID
+    has_live_video: bool
+
+
 class ChecksumsOut(BaseModel):
     existing: list[str]
+    details: list[ExistsDetail] = []
 
 
 class AdminUserCreate(BaseModel):

@@ -36,6 +36,7 @@ export default function PhotoGrid({ assets, selected, onOpen, onToggleSelect }: 
           >
             <img src={thumbUrl(a.id)} loading="lazy" alt="" draggable={false} />
             {a.asset_type === "video" && <span className="badge">{fmtDuration(a.duration_sec)}</span>}
+            {a.has_live_video && <span className="badge live">◉ LIVE</span>}
             {a.is_favorite && <span className="fav">❤️</span>}
             {isSel && <span className="check">✓</span>}
           </div>

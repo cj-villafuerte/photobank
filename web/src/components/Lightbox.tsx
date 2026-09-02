@@ -1,5 +1,5 @@
-import { useCallback, useEffect } from "react";
-import { AssetThin, downloadUrl, originalUrl, previewUrl } from "../api";
+import { useCallback, useEffect, useState } from "react";
+import { AssetThin, downloadUrl, liveVideoUrl, originalUrl, previewUrl } from "../api";
 
 interface Props {
   assets: AssetThin[];
@@ -19,6 +19,9 @@ export default function Lightbox({
   onTrash,
 }: Props) {
   const asset = assets[index];
+  const [liveActive, setLiveActive] = useState(false);
+
+  useEffect(() => setLiveActive(false), [index]);
 
   const prev = useCallback(() => {
     if (index > 0) onNavigate(index - 1);
@@ -42,6 +45,11 @@ export default function Lightbox({
   return (
     <div className="lightbox">
       <div className="lb-top">
+        {asset.has_live_video && (
+          <button onClick={() => setLiveActive(!liveActive)}>
+            {liveActive ? "⏸ Still" : "◉ LIVE"}
+          </button>
+        )}
         {onToggleFavorite && (
           <button onClick={() => onToggleFavorite(asset)}>
             {asset.is_favorite ? "💔 Unfavorite" : "❤️ Favorite"}
@@ -65,6 +73,15 @@ export default function Lightbox({
         )}
         {asset.asset_type === "video" ? (
           <video key={asset.id} src={originalUrl(asset.id)} controls autoPlay />
+        ) : liveActive ? (
+          <video
+            key={`${asset.id}-live`}
+            src={liveVideoUrl(asset.id)}
+            autoPlay
+            playsInline
+            onEnded={() => setLiveActive(false)}
+            onError={() => setLiveActive(false)}
+          />
         ) : (
           <img key={asset.id} src={previewUrl(asset.id)} alt="" />
         )}

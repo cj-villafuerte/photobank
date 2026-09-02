@@ -187,12 +187,29 @@ def _generate_image_thumbs(original: Path, out_dir: Path) -> None:
         thumb.save(out_dir / "thumb.webp", "WEBP", quality=70)
 
 
+async def _is_hdr_video(path: Path) -> bool:
+    """HDR transfer functions (PQ/HLG) need tone mapping or frame grabs look washed out."""
+    proc = await asyncio.create_subprocess_exec(
+        ffbin("ffprobe"), "-v", "quiet", "-select_streams", "v:0",
+        "-show_entries", "stream=color_transfer", "-of", "csv=p=0", str(path),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    out, _ = await proc.communicate()
+    return out.decode(errors="ignore").strip() in ("smpte2084", "arib-std-b67")
+
+
+# zscale (libzimg, included in the Gyan full build) does linearize -> tonemap -> bt709
+HDR_TONEMAP = "zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv,format=yuv420p"
+
+
 async def _generate_video_thumbs(original: Path, out_dir: Path) -> None:
     frame = out_dir / "frame.jpg"
+    tonemap = ["-vf", HDR_TONEMAP] if await _is_hdr_video(original) else []
     for seek in ("1", "0"):  # very short videos have no frame at t=1s
         proc = await asyncio.create_subprocess_exec(
             ffbin("ffmpeg"), "-y", "-v", "quiet", "-ss", seek, "-i", str(original),
-            "-frames:v", "1", str(frame),
+            *tonemap, "-frames:v", "1", str(frame),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )

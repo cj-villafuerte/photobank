@@ -68,6 +68,11 @@ class Asset(Base):
     is_favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     trashed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     thumb_status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    live_video_path: Mapped[str | None] = mapped_column(Text)  # Live Photo companion video
+
+    @property
+    def has_live_video(self) -> bool:
+        return self.live_video_path is not None
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

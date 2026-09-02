@@ -35,6 +35,7 @@ class SyncService {
   final PhotobankApi api;
   SharedPreferences? _prefs;
   Map<String, String> _synced = {}; // asset id -> checksum
+  Set<String> _liveDone = {}; // asset ids whose live-photo video is confirmed on server
   bool cancelRequested = false;
 
   SyncService(this.api);
@@ -45,10 +46,12 @@ class SyncService {
     if (raw != null) {
       _synced = (jsonDecode(raw) as Map).cast<String, String>();
     }
+    _liveDone = (_prefs!.getStringList('live_done_v1') ?? []).toSet();
   }
 
   Future<void> _save() async {
     await _prefs!.setString('synced_v1', jsonEncode(_synced));
+    await _prefs!.setStringList('live_done_v1', _liveDone.toList());
   }
 
   Future<bool> requestPermission() async {
@@ -113,12 +116,32 @@ class SyncService {
         } else {
           final checksum = await _sha256OfFile(file);
           final existing = await api.existingChecksums([checksum]);
-          if (existing.contains(checksum)) {
+          String? serverId;
+          var serverHasLive = false;
+          final detail = existing[checksum];
+          if (detail != null) {
             skipped++;
+            serverId = detail.assetId.isEmpty ? null : detail.assetId;
+            serverHasLive = detail.hasLiveVideo;
           } else {
-            final isNew = await api.upload(file, name, asset.createDateTime,
+            final outcome = await api.upload(file, name, asset.createDateTime,
                 onProgress: onFileProgress);
-            isNew ? uploaded++ : skipped++;
+            outcome.isNew ? uploaded++ : skipped++;
+            serverId = outcome.assetId;
+          }
+          // Live Photos: ship the ~3s video half too (iOS only)
+          if (asset.isLivePhoto && serverId != null && !serverHasLive) {
+            try {
+              final live = await asset.originFileWithSubtype;
+              if (live != null && live.path != file.path) {
+                await api.uploadLiveVideo(serverId, live);
+                _liveDone.add(asset.id);
+              }
+            } catch (_) {
+              // still is safely uploaded; live half can retry next sync
+            }
+          } else if (asset.isLivePhoto && serverHasLive) {
+            _liveDone.add(asset.id);
           }
           _synced[asset.id] = checksum;
           await _save();
@@ -132,6 +155,39 @@ class SyncService {
       done++;
       yield SyncProgress(done, todo.length, uploaded, skipped, failed, name);
     }
+
+    // backfill: photos synced before live-photo support got their video half
+    if (!cancelRequested) {
+      final candidates = assets
+          .where((a) => a.isLivePhoto && _synced.containsKey(a.id) && !_liveDone.contains(a.id))
+          .toList();
+      if (candidates.isNotEmpty) {
+        yield SyncProgress(done, todo.length, uploaded, skipped, failed,
+            'Live Photo videos (${candidates.length})…');
+        final byChecksum = {for (final a in candidates) _synced[a.id]!: a};
+        final existing = await api.existingChecksums(byChecksum.keys.toList());
+        for (final entry in byChecksum.entries) {
+          if (cancelRequested) break;
+          final detail = existing[entry.key];
+          if (detail == null) continue;
+          if (detail.hasLiveVideo || detail.assetId.isEmpty) {
+            _liveDone.add(entry.value.id);
+            continue;
+          }
+          try {
+            final still = await entry.value.originFile;
+            final live = await entry.value.originFileWithSubtype;
+            if (live != null && live.path != still?.path) {
+              await api.uploadLiveVideo(detail.assetId, live);
+            }
+            _liveDone.add(entry.value.id);
+          } catch (_) {
+            // retry next sync
+          }
+        }
+        await _save();
+      }
+    }
   }
 
   /// Deletes from the DEVICE every asset whose checksum the server confirms
@@ -144,7 +200,7 @@ class SyncService {
     // re-verify against the server before deleting anything
     final checksums = candidates.map((a) => _synced[a.id]!).toSet().toList();
     final confirmed = await api.existingChecksums(checksums);
-    final deletable = candidates.where((a) => confirmed.contains(_synced[a.id]!)).toList();
+    final deletable = candidates.where((a) => confirmed.containsKey(_synced[a.id]!)).toList();
     if (deletable.isEmpty) return 0;
 
     final deletedIds = await PhotoManager.editor.deleteWithIds(

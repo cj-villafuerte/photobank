@@ -16,6 +16,7 @@ export interface AssetThin {
   taken_at: string;
   is_favorite: boolean;
   thumb_status: string;
+  has_live_video: boolean;
 }
 
 export interface AssetFull extends AssetThin {
@@ -153,3 +154,4 @@ export const thumbUrl = (id: string) => `/api/assets/${id}/thumbnail`;
 export const previewUrl = (id: string) => `/api/assets/${id}/preview`;
 export const originalUrl = (id: string) => `/api/assets/${id}/original`;
 export const downloadUrl = (id: string) => `/api/assets/${id}/original?download=1`;
+export const liveVideoUrl = (id: string) => `/api/assets/${id}/live-video`;

@@ -20,6 +20,7 @@ from ..schemas import (
     AssetThin,
     ChecksumsIn,
     ChecksumsOut,
+    ExistsDetail,
     TimelineBucket,
     UploadResult,
 )
@@ -158,12 +159,70 @@ async def assets_exist(
     """Bulk dedup check so the mobile app can skip uploading photos the server already has."""
     if not body.checksums:
         return ChecksumsOut(existing=[])
-    rows = await db.scalars(
-        select(Asset.checksum).where(
-            Asset.owner_id == user.id, Asset.checksum.in_(body.checksums)
+    rows = (
+        await db.execute(
+            select(Asset.checksum, Asset.id, Asset.live_video_path).where(
+                Asset.owner_id == user.id, Asset.checksum.in_(body.checksums)
+            )
         )
+    ).all()
+    return ChecksumsOut(
+        existing=[r.checksum for r in rows],
+        details=[
+            ExistsDetail(
+                checksum=r.checksum, asset_id=r.id, has_live_video=r.live_video_path is not None
+            )
+            for r in rows
+        ],
     )
-    return ChecksumsOut(existing=list(rows))
+
+
+@router.post("/assets/{asset_id}/live-video", response_model=AssetOut)
+async def attach_live_video(
+    asset_id: uuid.UUID,
+    file: UploadFile,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Store the ~3s video component of an iPhone Live Photo next to its still."""
+    asset = await _get_owned_asset(asset_id, user, db)
+    if asset.asset_type != "image":
+        raise HTTPException(status_code=400, detail="Live video attaches to images only")
+    if asset.live_video_path:
+        return asset  # already attached - idempotent for re-syncs
+    original = storage.absolute_from_root(asset.file_path)
+    dest = original.parent / f"{original.stem}.live.mov"
+    tmp = storage.tmp_path()
+    size = 0
+    try:
+        with open(tmp, "wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                out.write(chunk)
+        if size == 0:
+            raise HTTPException(status_code=400, detail="Empty file")
+        ingest.move_into_library(tmp, dest)
+        asset.live_video_path = storage.relative_to_root(dest)
+        await db.commit()
+        await db.refresh(asset)
+        return asset
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+@router.get("/assets/{asset_id}/live-video")
+async def get_live_video(
+    asset_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    asset = await _get_owned_asset(asset_id, user, db)
+    if not asset.live_video_path:
+        raise HTTPException(status_code=404, detail="No live video for this asset")
+    path = storage.absolute_from_root(asset.live_video_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Live video missing from storage")
+    return FileResponse(path, media_type="video/quicktime", headers={"Cache-Control": CACHE_FOREVER})
 
 
 @router.get("/timeline/buckets", response_model=list[TimelineBucket])
@@ -298,7 +357,7 @@ async def permanent_delete(
     db: AsyncSession = Depends(get_db),
 ):
     asset = await _get_owned_asset(asset_id, user, db)
-    storage.delete_asset_files(asset.owner_id, asset.id, asset.file_path)
+    storage.delete_asset_files(asset.owner_id, asset.id, asset.file_path, asset.live_video_path)
     await db.delete(asset)
     await db.commit()
 
@@ -341,7 +400,7 @@ async def empty_trash(
         )
     ).all()
     for asset in trashed:
-        storage.delete_asset_files(asset.owner_id, asset.id, asset.file_path)
+        storage.delete_asset_files(asset.owner_id, asset.id, asset.file_path, asset.live_video_path)
     await db.execute(
         delete(Asset).where(Asset.owner_id == user.id, Asset.trashed_at.is_not(None))
     )
