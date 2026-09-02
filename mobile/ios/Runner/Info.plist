@@ -14,6 +14,10 @@
 	<string>Photobank needs access to manage backed-up photos.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Photobank talks to your photo server on your home network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_photobank._tcp</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

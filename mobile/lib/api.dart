@@ -25,6 +25,29 @@ class _ProgressMultipartRequest extends http.MultipartRequest {
   }
 }
 
+class TimelineBucket {
+  final String bucket; // "2026-09"
+  final int count;
+  const TimelineBucket(this.bucket, this.count);
+}
+
+class RemoteAsset {
+  final String id;
+  final String assetType; // image | video
+  final DateTime takenAt;
+  final bool isFavorite;
+  final double? durationSec;
+  const RemoteAsset(this.id, this.assetType, this.takenAt, this.isFavorite, this.durationSec);
+
+  factory RemoteAsset.fromJson(Map<String, dynamic> j) => RemoteAsset(
+        j['id'] as String,
+        j['asset_type'] as String,
+        DateTime.parse(j['taken_at'] as String).toLocal(),
+        j['is_favorite'] as bool? ?? false,
+        (j['duration_sec'] as num?)?.toDouble(),
+      );
+}
+
 class ApiException implements Exception {
   final int status;
   final String message;
@@ -110,6 +133,57 @@ class PhotobankApi {
     if (res.statusCode == 201) return true;
     if (res.statusCode == 200) return false; // duplicate
     throw ApiException(res.statusCode, _detail(res));
+  }
+
+  Map<String, String> get authHeaders =>
+      {if (token != null) 'Authorization': 'Bearer $token'};
+
+  String thumbUrl(String id) => '$baseUrl/api/assets/$id/thumbnail';
+  String previewUrl(String id) => '$baseUrl/api/assets/$id/preview';
+
+  Future<List<TimelineBucket>> buckets() async {
+    final res = await http.get(_u('/api/timeline/buckets'), headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    return (jsonDecode(res.body) as List)
+        .map((b) => TimelineBucket(b['bucket'] as String, b['count'] as int))
+        .toList();
+  }
+
+  Future<List<RemoteAsset>> bucketAssets(String bucket) async {
+    final res = await http.get(_u('/api/timeline/bucket/$bucket'), headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    return (jsonDecode(res.body) as List)
+        .map((j) => RemoteAsset.fromJson(j as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<String> originalFilename(String id) async {
+    final res = await http.get(_u('/api/assets/$id'), headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    return (jsonDecode(res.body) as Map<String, dynamic>)['original_filename'] as String;
+  }
+
+  /// Streams the original file to [dest] without buffering it in memory.
+  Future<void> downloadOriginal(String id, File dest,
+      {void Function(int received, int total)? onProgress}) async {
+    final req = http.Request('GET', _u('/api/assets/$id/original'));
+    req.headers.addAll(authHeaders);
+    final res = await http.Client().send(req);
+    if (res.statusCode != 200) {
+      throw ApiException(res.statusCode, 'Download failed');
+    }
+    final total = res.contentLength ?? 0;
+    var received = 0;
+    final sink = dest.openWrite();
+    try {
+      await for (final chunk in res.stream) {
+        received += chunk.length;
+        sink.add(chunk);
+        onProgress?.call(received, total);
+      }
+    } finally {
+      await sink.close();
+    }
   }
 
   String _detail(http.Response res) {

@@ -1,9 +1,12 @@
+import 'package:bonsoir/bonsoir.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'api.dart';
+import 'library_page.dart';
 import 'sync_service.dart';
+import 'theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,10 +20,7 @@ class PhotobankApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Photobank',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF4A9EFF), brightness: Brightness.dark),
-        useMaterial3: true,
-      ),
+      theme: photobankTheme(),
       home: const RootGate(),
     );
   }
@@ -65,8 +65,51 @@ class _RootGateState extends State<RootGate> {
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (_api == null) return SetupPage(onLoggedIn: _onLoggedIn);
-    return SyncPage(api: _api!, onLogout: _onLogout);
+    return HomeShell(api: _api!, onLogout: _onLogout);
   }
+}
+
+/// Bottom navigation between the backup screen and the server library.
+class HomeShell extends StatefulWidget {
+  final PhotobankApi api;
+  final Future<void> Function() onLogout;
+  const HomeShell({super.key, required this.api, required this.onLogout});
+  @override
+  State<HomeShell> createState() => _HomeShellState();
+}
+
+class _HomeShellState extends State<HomeShell> {
+  int _tab = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _tab,
+        children: [
+          SyncPage(api: widget.api, onLogout: widget.onLogout),
+          Scaffold(
+            appBar: AppBar(title: const Text('Library')),
+            body: LibraryPage(api: widget.api),
+          ),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab,
+        onDestinationSelected: (i) => setState(() => _tab = i),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.cloud_upload_outlined), selectedIcon: Icon(Icons.cloud_upload), label: 'Backup'),
+          NavigationDestination(icon: Icon(Icons.photo_library_outlined), selectedIcon: Icon(Icons.photo_library), label: 'Library'),
+        ],
+      ),
+    );
+  }
+}
+
+class FoundServer {
+  final String name;
+  final String url;
+  const FoundServer(this.name, this.url);
 }
 
 class SetupPage extends StatefulWidget {
@@ -77,7 +120,186 @@ class SetupPage extends StatefulWidget {
 }
 
 class _SetupPageState extends State<SetupPage> {
+  final Map<String, FoundServer> _found = {};
+  BonsoirDiscovery? _discovery;
+  bool _manual = false;
   final _url = TextEditingController(text: 'http://192.168.');
+
+  @override
+  void initState() {
+    super.initState();
+    _startDiscovery();
+    SharedPreferences.getInstance().then((prefs) {
+      final saved = prefs.getString('server_url');
+      if (saved != null) _url.text = saved;
+    });
+  }
+
+  Future<void> _startDiscovery() async {
+    try {
+      final discovery = BonsoirDiscovery(type: '_photobank._tcp');
+      _discovery = discovery;
+      await discovery.ready;
+      discovery.eventStream!.listen((event) {
+        final service = event.service;
+        if (service == null || !mounted) return;
+        if (event.type == BonsoirDiscoveryEventType.discoveryServiceFound) {
+          service.resolve(discovery.serviceResolver);
+        } else if (event.type == BonsoirDiscoveryEventType.discoveryServiceResolved) {
+          final json = service.toJson();
+          final host = json['service.host'] ?? json['host'];
+          final port = json['service.port'] ?? json['port'] ?? 8000;
+          if (host != null) {
+            final displayName =
+                (service.attributes['name']?.isNotEmpty ?? false) ? service.attributes['name']! : service.name;
+            setState(() {
+              _found[service.name] = FoundServer(displayName, 'http://$host:$port');
+            });
+          }
+        } else if (event.type == BonsoirDiscoveryEventType.discoveryServiceLost) {
+          setState(() => _found.remove(service.name));
+        }
+      });
+      await discovery.start();
+    } catch (_) {
+      // discovery unavailable (permissions, platform) - manual entry still works
+      if (mounted) setState(() => _manual = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _discovery?.stop();
+    _url.dispose();
+    super.dispose();
+  }
+
+  String _normalizedManualUrl() {
+    var url = _url.text.trim();
+    if (url.endsWith('/')) url = url.substring(0, url.length - 1);
+    if (!url.startsWith('http')) url = 'http://$url';
+    return url;
+  }
+
+  Future<void> _loginTo(String url, String serverLabel) async {
+    // pause mDNS traffic while talking to the server
+    final api = PhotobankApi(baseUrl: url);
+    try {
+      await api.checkHealth();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Cannot reach $serverLabel - is the phone on the same Wi-Fi?'),
+      ));
+      return;
+    }
+    if (!mounted) return;
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => _LoginSheet(api: api, serverLabel: serverLabel),
+    );
+    if (ok == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('server_url', url);
+      await prefs.setString('token', api.token!);
+      widget.onLoggedIn(api);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final servers = _found.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(28),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('📷', textAlign: TextAlign.center, style: TextStyle(fontSize: 56)),
+                const SizedBox(height: 8),
+                Text('Photobank', textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineMedium),
+                const SizedBox(height: 28),
+                Row(
+                  children: [
+                    const SizedBox(
+                      width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 10),
+                    Text('Looking for servers on your network…',
+                        style: Theme.of(context).textTheme.bodyMedium),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (servers.isEmpty)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        'No servers found yet. Make sure the Photobank server is '
+                        'running and this phone is on the same Wi-Fi.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  ),
+                for (final s in servers)
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.dns),
+                      title: Text(s.name),
+                      subtitle: Text(s.url),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _loginTo(s.url, s.name),
+                    ),
+                  ),
+                const SizedBox(height: 20),
+                if (!_manual)
+                  TextButton(
+                    onPressed: () => setState(() => _manual = true),
+                    child: const Text('Enter address manually'),
+                  )
+                else ...[
+                  TextField(
+                    controller: _url,
+                    keyboardType: TextInputType.url,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: 'Server URL',
+                      hintText: 'http://192.168.1.23:8000',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () => _loginTo(_normalizedManualUrl(), _normalizedManualUrl()),
+                    child: const Padding(padding: EdgeInsets.all(12), child: Text('Connect')),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Email/password prompt shown after tapping a discovered server.
+class _LoginSheet extends StatefulWidget {
+  final PhotobankApi api;
+  final String serverLabel;
+  const _LoginSheet({required this.api, required this.serverLabel});
+  @override
+  State<_LoginSheet> createState() => _LoginSheetState();
+}
+
+class _LoginSheetState extends State<_LoginSheet> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   String? _error;
@@ -87,97 +309,71 @@ class _SetupPageState extends State<SetupPage> {
   void initState() {
     super.initState();
     SharedPreferences.getInstance().then((prefs) {
-      final saved = prefs.getString('server_url');
-      if (saved != null) _url.text = saved;
-      final savedEmail = prefs.getString('email');
-      if (savedEmail != null) _email.text = savedEmail;
+      final saved = prefs.getString('email');
+      if (saved != null && mounted) setState(() => _email.text = saved);
     });
   }
 
-  Future<void> _connect() async {
+  Future<void> _login() async {
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      var url = _url.text.trim();
-      if (url.endsWith('/')) url = url.substring(0, url.length - 1);
-      if (!url.startsWith('http')) url = 'http://$url';
-      final api = PhotobankApi(baseUrl: url);
-      await api.checkHealth();
-      await api.login(_email.text.trim(), _password.text);
+      await widget.api.login(_email.text.trim(), _password.text);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('server_url', url);
       await prefs.setString('email', _email.text.trim());
-      await prefs.setString('token', api.token!);
-      widget.onLoggedIn(api);
+      if (mounted) Navigator.pop(context, true);
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = 'Cannot reach server - check the URL and that '
-          'your phone is on the same Wi-Fi.');
+      setState(() => _error = 'Login failed: $e');
     } finally {
-      setState(() => _busy = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(28),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text('📷', textAlign: TextAlign.center, style: TextStyle(fontSize: 56)),
-                const SizedBox(height: 8),
-                Text('Photobank', textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _url,
-                  keyboardType: TextInputType.url,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Server URL',
-                    hintText: 'http://192.168.1.23:8000',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                  decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _password,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder()),
-                  onSubmitted: (_) => _connect(),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                ],
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: _busy ? null : _connect,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Text(_busy ? 'Connecting…' : 'Connect'),
-                  ),
-                ),
-              ],
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24, right: 24, top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Log in to ${widget.serverLabel}',
+              style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            autocorrect: false,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _password,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder()),
+            onSubmitted: (_) => _login(),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ],
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: _busy ? null : _login,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(_busy ? 'Logging in…' : 'Log in'),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

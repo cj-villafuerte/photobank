@@ -8,3 +8,13 @@ if ($existing) {
         -LocalPort 8000 -Action Allow -Profile Private | Out-Null
     Write-Host "Firewall rule created: TCP 8000 inbound, Private networks only."
 }
+
+# mDNS so phones can auto-discover the server (UDP 5353)
+$mdns = Get-NetFirewallRule -DisplayName "Photobank mDNS" -ErrorAction SilentlyContinue
+if ($mdns) {
+    Write-Host "Firewall rule 'Photobank mDNS' already exists."
+} else {
+    New-NetFirewallRule -DisplayName "Photobank mDNS" -Direction Inbound -Protocol UDP `
+        -LocalPort 5353 -Action Allow -Profile Private | Out-Null
+    Write-Host "Firewall rule created: UDP 5353 (mDNS discovery), Private networks only."
+}

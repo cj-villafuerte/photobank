@@ -7,7 +7,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pillow_heif import register_heif_opener
 
-from . import storage
+from . import discovery, storage
+from .config import settings
 from .db import SessionLocal
 from .ingest import ThumbnailWorker
 from .routers import admin, albums, assets, auth
@@ -24,7 +25,9 @@ async def lifespan(app: FastAPI):
     worker = ThumbnailWorker(SessionLocal)
     app.state.thumb_worker = worker
     await worker.start()
+    mdns = discovery.register(settings.port)
     yield
+    discovery.unregister(mdns)
     await worker.stop()
 
 
