@@ -66,10 +66,31 @@ Register-ScheduledTask -TaskName "Photobank" -Trigger (New-ScheduledTaskTrigger 
 - Video playback streams the original file — H.264 MP4/MOV plays everywhere; exotic codecs may not.
 - Trash keeps files on disk until you empty it or delete items permanently.
 
+## Mobile app (iPhone/Android)
+
+`mobile/` is a Flutter "sync companion": it logs into your server, backs up the
+camera roll (skipping anything the server already has, verified by SHA-256), and
+its **Free up space** button deletes photos from the phone — but only ones the
+server just confirmed it still holds.
+
+**iOS install (sideloading, no Mac needed):** every push touching `mobile/`
+builds an unsigned IPA via GitHub Actions (macOS runner). Download the
+`photobank-ipa` artifact from the Actions run, then install it with
+[Sideloadly](https://sideloadly.io/): plug in the iPhone, drag the IPA in,
+sign in with your Apple ID. With a free Apple ID the app expires after 7 days —
+re-sideload to renew. On the phone: Settings → General → VPN & Device
+Management → trust your developer certificate.
+
+First launch: enter your server's LAN URL (e.g. `http://192.168.1.23:8000`),
+log in, grant photo access ("All Photos"). Backups run while the app is open.
+
+**Android:** `flutter build apk` in `mobile/` produces an installable APK directly.
+
 ## Layout
 
 ```
 server/   FastAPI app (SQLAlchemy models, ingest pipeline, REST API, serves web/dist)
 web/      React SPA (Vite + TypeScript + React Query)
+mobile/   Flutter sync-companion app (camera-roll backup + free-up-space)
 scripts/  PowerShell: setup / dev / start / firewall
 ```
