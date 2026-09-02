@@ -87,8 +87,9 @@ class SyncService {
     return output.events.single.toString();
   }
 
-  /// Uploads everything not yet on the server. Yields progress per asset.
-  Stream<SyncProgress> sync() async* {
+  /// Uploads everything not yet on the server. Yields progress per asset;
+  /// [onFileProgress] fires with byte-level progress of the current upload.
+  Stream<SyncProgress> sync({void Function(int sent, int total)? onFileProgress}) async* {
     cancelRequested = false;
     final assets = await _allAssets();
     final todo = assets.where((a) => !_synced.containsKey(a.id)).toList();
@@ -108,7 +109,8 @@ class SyncService {
           if (existing.contains(checksum)) {
             skipped++;
           } else {
-            final isNew = await api.upload(file, name, asset.createDateTime);
+            final isNew = await api.upload(file, name, asset.createDateTime,
+                onProgress: onFileProgress);
             isNew ? uploaded++ : skipped++;
           }
           _synced[asset.id] = checksum;

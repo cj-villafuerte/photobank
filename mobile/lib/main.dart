@@ -195,6 +195,8 @@ class _SyncPageState extends State<SyncPage> {
   late final SyncService _service = SyncService(widget.api);
   DeviceStats? _stats;
   SyncProgress? _progress;
+  int _fileSent = 0;
+  int _fileTotal = 0;
   bool _syncing = false;
   bool _permissionDenied = false;
   String? _lastResult;
@@ -223,9 +225,22 @@ class _SyncPageState extends State<SyncPage> {
     });
     try {
       SyncProgress? last;
-      await for (final p in _service.sync()) {
+      await for (final p in _service.sync(onFileProgress: (sent, total) {
+        if (mounted) {
+          setState(() {
+            _fileSent = sent;
+            _fileTotal = total;
+          });
+        }
+      })) {
         last = p;
-        if (mounted) setState(() => _progress = p);
+        if (mounted) {
+          setState(() {
+            _progress = p;
+            _fileSent = 0;
+            _fileTotal = 0;
+          });
+        }
       }
       if (last != null) {
         _lastResult = _service.cancelRequested
@@ -330,14 +345,32 @@ class _SyncPageState extends State<SyncPage> {
                       const SizedBox(height: 24),
                       if (_syncing && _progress != null) ...[
                         LinearProgressIndicator(
-                          value: _progress!.total == 0 ? null : _progress!.done / _progress!.total,
+                          value: _progress!.total == 0
+                              ? null
+                              : (_progress!.done +
+                                      (_fileTotal > 0 ? _fileSent / _fileTotal : 0)) /
+                                  _progress!.total,
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '${_progress!.done} / ${_progress!.total} - ${_progress!.currentName}',
+                          'File ${_progress!.done + 1} of ${_progress!.total}',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _fileTotal > 0
+                              ? '${_progress!.currentName} - '
+                                '${(_fileSent / _fileTotal * 100).clamp(0, 100).toStringAsFixed(0)}% '
+                                'of ${_fmtBytes(_fileTotal)}'
+                              : '${_progress!.currentName} - preparing…',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 8),
+                        LinearProgressIndicator(
+                          value: _fileTotal > 0 ? (_fileSent / _fileTotal).clamp(0.0, 1.0) : null,
+                          minHeight: 2,
                         ),
                         const SizedBox(height: 8),
                         OutlinedButton(
@@ -382,6 +415,13 @@ class _SyncPageState extends State<SyncPage> {
                   ),
                 ),
     );
+  }
+
+  static String _fmtBytes(int bytes) {
+    if (bytes >= 1073741824) return '${(bytes / 1073741824).toStringAsFixed(1)} GB';
+    if (bytes >= 1048576) return '${(bytes / 1048576).toStringAsFixed(1)} MB';
+    if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    return '$bytes B';
   }
 
   Widget _statCard(String label, String value) {
