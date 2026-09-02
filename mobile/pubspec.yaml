@@ -1,0 +1,26 @@
+name: photobank_mobile
+description: Photobank sync companion - backs up your camera roll to your own server.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2
+  photo_manager: ^3.6.4
+  shared_preferences: ^2.3.3
+  crypto: ^3.0.6
+  convert: ^3.1.1
+  url_launcher: ^6.3.1
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
