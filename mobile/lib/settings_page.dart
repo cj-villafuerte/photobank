@@ -1,7 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'format.dart';
+import 'sync_service.dart';
 import 'background.dart' show backlogThreshold;
 import 'duplicates_page.dart';
 import 'library_page.dart';
@@ -36,6 +41,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _notify = p.getBool('notify_backlog') ?? false;
       });
     });
+    _measureAppData();
   }
 
   Future<void> _setRetention(bool on) async {
@@ -48,6 +54,97 @@ class _SettingsPageState extends State<SettingsPage> {
     final p = await SharedPreferences.getInstance();
     await p.setInt('retention_months', m);
     setState(() => _months = m);
+  }
+
+  int? _cacheBytes;
+  int? _syncRecords;
+
+  Future<void> _measureAppData() async {
+    try {
+      final dir = await getTemporaryDirectory();
+      var total = 0;
+      if (dir.existsSync()) {
+        await for (final f in dir.list(recursive: true, followLinks: false)) {
+          if (f is File) total += await f.length();
+        }
+      }
+      final svc = SyncService(widget.api);
+      await svc.init();
+      if (mounted) {
+        setState(() {
+          _cacheBytes = total;
+          _syncRecords = svc.syncedCount;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _clearCache() async {
+    try {
+      final dir = await getTemporaryDirectory();
+      if (dir.existsSync()) {
+        await for (final f in dir.list(followLinks: false)) {
+          try {
+            await f.delete(recursive: true);
+          } catch (_) {}
+        }
+      }
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+      _toast('Cache cleared');
+    } catch (e) {
+      _toast('Could not clear cache: $e');
+    }
+    _measureAppData();
+  }
+
+  Future<void> _resetSyncRecords() async {
+    final ok = await _confirm(
+      'Reset sync records?',
+      'The app forgets which photos are backed up. Nothing is deleted anywhere; the next '
+      'sync re-checks every item against the server (it re-hashes, so it takes a while, '
+      'but nothing re-uploads).',
+      'Reset',
+    );
+    if (!ok) return;
+    final svc = SyncService(widget.api);
+    await svc.init();
+    await svc.clearLocalState();
+    _toast('Sync records reset');
+    _measureAppData();
+  }
+
+  Future<void> _eraseEverything() async {
+    final ok = await _confirm(
+      'Erase app data and log out?',
+      'Removes the login, server address, settings, sync records and cache from this phone. '
+      'Your photos on the server and on this phone are untouched.',
+      'Erase',
+    );
+    if (!ok) return;
+    await _clearCache();
+    final p = await SharedPreferences.getInstance();
+    await p.clear();
+    await widget.onLogout();
+  }
+
+  Future<bool> _confirm(String title, String body, String action) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(title),
+            content: Text(body),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(action)),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  void _toast(String m) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
   Future<void> _setNotify(bool on) async {
@@ -209,6 +306,39 @@ class _SettingsPageState extends State<SettingsPage> {
                     context,
                     MaterialPageRoute(builder: (_) => TrashPage(api: widget.api)),
                   ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text('App data on this phone', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.cached),
+                  title: const Text('Clear cache'),
+                  subtitle: Text(_cacheBytes == null
+                      ? 'Temporary files and thumbnails'
+                      : 'Temporary files and thumbnails · ${fmtBytes(_cacheBytes!)}'),
+                  onTap: _clearCache,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.history),
+                  title: const Text('Reset sync records'),
+                  subtitle: Text(_syncRecords == null
+                      ? 'Re-verify everything against the server'
+                      : '$_syncRecords items tracked · re-verify against the server'),
+                  onTap: _resetSyncRecords,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(Icons.delete_sweep, color: Theme.of(context).colorScheme.error),
+                  title: const Text('Erase app data & log out'),
+                  subtitle: const Text('Login, settings, records, cache - photos untouched'),
+                  onTap: _eraseEverything,
                 ),
               ],
             ),

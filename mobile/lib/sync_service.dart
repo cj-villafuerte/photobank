@@ -325,8 +325,13 @@ class SyncService {
     return assets.where((a) => !_synced.containsKey(a.id)).length;
   }
 
+  /// Forget which device items are backed up. The next sync re-verifies every
+  /// item against the server by checksum (nothing re-uploads, but it re-hashes).
   Future<void> clearLocalState() async {
     _synced = {};
+    _liveDone = {};
     await _save();
   }
+
+  int get syncedCount => _synced.length;
 }
