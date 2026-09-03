@@ -58,8 +58,9 @@ class RemoteAsset {
   final int fileSize;
   final int? width;
   final int? height;
+  final String thumbStatus;
   const RemoteAsset(this.id, this.assetType, this.takenAt, this.isFavorite, this.durationSec,
-      this.hasLiveVideo, this.fileSize, [this.width, this.height]);
+      this.hasLiveVideo, this.fileSize, [this.width, this.height, this.thumbStatus = 'done']);
 
   factory RemoteAsset.fromJson(Map<String, dynamic> j) => RemoteAsset(
         j['id'] as String,
@@ -71,6 +72,7 @@ class RemoteAsset {
         (j['file_size'] as num?)?.toInt() ?? 0,
         (j['width'] as num?)?.toInt(),
         (j['height'] as num?)?.toInt(),
+        j['thumb_status'] as String? ?? 'done',
       );
 }
 

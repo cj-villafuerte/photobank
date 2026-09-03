@@ -324,34 +324,45 @@ async def _generate_video_thumbs(original: Path, out_dir: Path) -> None:
         frame.unlink(missing_ok=True)
 
 
+THUMB, ANALYZE = 0, 1  # queue priorities: thumbnails always before fingerprint/OCR
+
+
 class ThumbnailWorker:
-    """Single-consumer queue so bulk uploads don't fork 200 concurrent ffmpeg/Pillow jobs."""
+    """Single consumer so bulk uploads don't fork 200 concurrent ffmpeg/Pillow jobs.
+
+    Two priorities: 'thumb' jobs (what the user sees) always run before
+    'analyze' jobs (dHash + OCR), so fresh uploads never wait behind a long
+    text-indexing backlog.
+    """
 
     def __init__(self, sessionmaker):
         self.sessionmaker = sessionmaker
-        self.queue: asyncio.Queue[uuid.UUID] = asyncio.Queue()
+        self.queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
+        self._seq = 0
         self._task: asyncio.Task | None = None
 
-    def enqueue(self, asset_id: uuid.UUID) -> None:
-        self.queue.put_nowait(asset_id)
+    def enqueue(self, asset_id: uuid.UUID, priority: int = THUMB) -> None:
+        self._seq += 1
+        self.queue.put_nowait((priority, self._seq, asset_id))
 
     async def start(self) -> None:
-        from sqlalchemy import or_, and_
+        from sqlalchemy import and_, or_
 
         async with self.sessionmaker() as db:
-            pending = await db.scalars(
-                select(Asset.id).where(
-                    or_(
-                        Asset.thumb_status == "pending",
-                        and_(
-                            Asset.asset_type == "image",
-                            or_(Asset.phash.is_(None), Asset.ocr_status == "pending"),
-                        ),
-                    )
-                )
+            thumbs = await db.scalars(
+                select(Asset.id).where(Asset.thumb_status == "pending").order_by(Asset.created_at.desc())
             )
-            for asset_id in pending:
-                self.enqueue(asset_id)
+            for asset_id in thumbs:
+                self.enqueue(asset_id, THUMB)
+            analyze = await db.scalars(
+                select(Asset.id).where(
+                    Asset.thumb_status == "done",
+                    Asset.asset_type == "image",
+                    or_(Asset.phash.is_(None), Asset.ocr_status == "pending"),
+                ).order_by(Asset.created_at.desc())
+            )
+            for asset_id in analyze:
+                self.enqueue(asset_id, ANALYZE)
         self._task = asyncio.create_task(self._run())
 
     async def stop(self) -> None:
@@ -364,27 +375,27 @@ class ThumbnailWorker:
 
     async def _run(self) -> None:
         while True:
-            asset_id = await self.queue.get()
+            priority, _seq, asset_id = await self.queue.get()
             try:
-                await self._process(asset_id)
+                if priority == THUMB:
+                    await self._process_thumb(asset_id)
+                else:
+                    await self._process_analyze(asset_id)
             except asyncio.CancelledError:
                 raise
             except Exception:
-                log.exception("thumbnail generation failed for %s", asset_id)
+                log.exception("worker job failed for %s", asset_id)
             finally:
                 self.queue.task_done()
 
-    async def _process(self, asset_id: uuid.UUID) -> None:
-        from .config import settings
-        from .models import AssetText
-
+    async def _process_thumb(self, asset_id: uuid.UUID) -> None:
         async with self.sessionmaker() as db:
             asset = await db.get(Asset, asset_id)
             if asset is None:
                 return
-            original = storage.absolute_from_root(asset.file_path)
-            out_dir = storage.thumb_dir(asset.owner_id, asset.id)
             if asset.thumb_status != "done":
+                original = storage.absolute_from_root(asset.file_path)
+                out_dir = storage.thumb_dir(asset.owner_id, asset.id)
                 try:
                     if asset.asset_type == "image":
                         await asyncio.to_thread(_generate_image_thumbs, original, out_dir)
@@ -394,12 +405,24 @@ class ThumbnailWorker:
                 except Exception:
                     log.exception("thumb failed: %s (%s)", asset.id, asset.original_filename)
                     asset.thumb_status = "failed"
+                await db.commit()
+            if asset.asset_type == "image" and asset.thumb_status == "done":
+                self.enqueue(asset.id, ANALYZE)  # fingerprint + OCR later, behind all thumbs
+            elif asset.asset_type != "image" and asset.ocr_status == "pending":
+                asset.ocr_status = "skipped"
+                await db.commit()
 
+    async def _process_analyze(self, asset_id: uuid.UUID) -> None:
+        from .config import settings
+        from .models import AssetText
+
+        async with self.sessionmaker() as db:
+            asset = await db.get(Asset, asset_id)
+            if asset is None or asset.asset_type != "image":
+                return
+            out_dir = storage.thumb_dir(asset.owner_id, asset.id)
             preview = out_dir / "preview.webp"
-            if asset.asset_type != "image":
-                if asset.ocr_status == "pending":
-                    asset.ocr_status = "skipped"
-            elif preview.is_file():
+            if preview.is_file():
                 if asset.phash is None:
                     try:
                         asset.phash = await asyncio.to_thread(compute_dhash, preview)

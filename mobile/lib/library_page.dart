@@ -9,6 +9,26 @@ import 'package:video_player/video_player.dart';
 import 'albums_page.dart' show showAddToAlbumSheet;
 import 'api.dart';
 
+/// Grid thumbnail; shows a "processing" tile while the server has not
+/// generated the thumbnail yet (fresh uploads) instead of a blank square.
+Widget thumbTile(PhotobankApi api, RemoteAsset a) {
+  if (a.thumbStatus != 'done') {
+    return Container(
+      color: Colors.white10,
+      child: Icon(a.thumbStatus == 'failed' ? Icons.broken_image : Icons.hourglass_top,
+          size: 18, color: Colors.white38),
+    );
+  }
+  return Image.network(
+    api.thumbUrl(a.id),
+    headers: api.authHeaders,
+    cacheWidth: 360,
+    fit: BoxFit.cover,
+    errorBuilder: (_, _, _) =>
+        Container(color: Colors.white10, child: const Icon(Icons.broken_image, size: 18)),
+  );
+}
+
 /// Browse everything stored on the server, month by month, and save
 /// individual photos/videos back to this phone's camera roll.
 class LibraryPage extends StatefulWidget {
@@ -210,14 +230,7 @@ class _LibraryPageState extends State<LibraryPage> {
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              Image.network(
-                                widget.api.thumbUrl(a.id),
-                                headers: widget.api.authHeaders, cacheWidth: 360,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => Container(
-                                    color: Colors.white10,
-                                    child: const Icon(Icons.broken_image, size: 18)),
-                              ),
+                              thumbTile(widget.api, a),
                               Positioned(
                                 right: 4,
                                 bottom: 4,
@@ -345,13 +358,7 @@ class _BucketSection extends StatelessWidget {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Image.network(
-                        api.thumbUrl(a.id),
-                        headers: api.authHeaders, cacheWidth: 360,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) =>
-                            Container(color: Colors.white10, child: const Icon(Icons.broken_image, size: 18)),
-                      ),
+                      thumbTile(api, a),
                       if (a.assetType == 'video')
                         const Positioned(
                           right: 4, top: 4,
