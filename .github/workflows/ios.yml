@@ -13,7 +13,7 @@ jobs:
       run:
         working-directory: mobile
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: subosito/flutter-action@v2
         with:
@@ -31,7 +31,7 @@ jobs:
           cp -r build/ios/iphoneos/Runner.app Payload/
           zip -r photobank.ipa Payload
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: photobank-ipa
           path: mobile/photobank.ipa
