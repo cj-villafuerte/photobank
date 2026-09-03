@@ -280,6 +280,42 @@ class SyncService {
     return deletedIds.length;
   }
 
+  /// Backed-up items older than [months] - the rolling-retention candidates.
+  Future<List<AssetEntity>> retentionCandidates(int months) async {
+    final cutoff = DateTime.now().subtract(Duration(days: 30 * months));
+    final assets = await _allAssets();
+    return assets
+        .where((a) => _synced.containsKey(a.id) && a.createDateTime.isBefore(cutoff))
+        .toList();
+  }
+
+  /// Deletes retention candidates from the DEVICE after the server confirms
+  /// it still holds each one. Returns how many were removed.
+  Future<int> applyRetention(int months) async {
+    final candidates = await retentionCandidates(months);
+    if (candidates.isEmpty) return 0;
+    final checksums = candidates.map((a) => _synced[a.id]!).toSet().toList();
+    final confirmed = await api.existingChecksums(checksums);
+    final deletable = candidates
+        .where((a) => confirmed.containsKey(_synced[a.id]!))
+        .map((a) => a.id)
+        .toList();
+    if (deletable.isEmpty) return 0;
+    final deleted = await PhotoManager.editor.deleteWithIds(deletable);
+    for (final id in deleted) {
+      _synced.remove(id);
+      _liveDone.remove(id);
+    }
+    await _save();
+    return deleted.length;
+  }
+
+  /// How many items on the device are not yet backed up.
+  Future<int> pendingCount() async {
+    final assets = await _allAssets();
+    return assets.where((a) => !_synced.containsKey(a.id)).length;
+  }
+
   Future<void> clearLocalState() async {
     _synced = {};
     await _save();

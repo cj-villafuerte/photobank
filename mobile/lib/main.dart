@@ -8,6 +8,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'api.dart';
 import 'background.dart';
 import 'library_page.dart';
+import 'notifications.dart';
 import 'settings_page.dart';
 import 'sync_service.dart';
 import 'theme.dart';
@@ -15,6 +16,7 @@ import 'theme.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const PhotobankApp());
+  initNotifications();
   initBackgroundBackup();
   BackgroundFetch.registerHeadlessTask(backgroundFetchHeadlessTask);
 }
@@ -414,6 +416,8 @@ class _SyncPageState extends State<SyncPage> {
   bool _oldestFirst = false;
   bool _bgBackup = false;
   String? _lastBgSync;
+  int _retentionCandidates = 0;
+  int _retentionMonths = 2;
   bool _permissionDenied = false;
   String? _lastResult;
 
@@ -440,6 +444,30 @@ class _SyncPageState extends State<SyncPage> {
     }
     final stats = await _service.stats();
     if (mounted) setState(() => _stats = stats);
+    if (prefs.getBool('retention_enabled') ?? false) {
+      final months = prefs.getInt('retention_months') ?? 2;
+      final candidates = await _service.retentionCandidates(months);
+      if (mounted) {
+        setState(() {
+          _retentionMonths = months;
+          _retentionCandidates = candidates.length;
+        });
+      }
+    } else if (mounted) {
+      setState(() => _retentionCandidates = 0);
+    }
+  }
+
+  Future<void> _applyRetention() async {
+    try {
+      final n = await _service.applyRetention(_retentionMonths);
+      _lastResult = n > 0
+          ? 'Removed $n backed-up items older than $_retentionMonths months from this phone.'
+          : 'Nothing eligible right now.';
+    } catch (e) {
+      _lastResult = 'Could not apply retention: $e';
+    }
+    await _load();
   }
 
   Future<void> _sync() async {
@@ -704,6 +732,21 @@ class _SyncPageState extends State<SyncPage> {
                           label: const Padding(
                             padding: EdgeInsets.all(12),
                             child: Text('Verify Live Photos'),
+                          ),
+                        ),
+                      ],
+                      if (!_syncing && _retentionCandidates > 0) ...[
+                        const SizedBox(height: 16),
+                        Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.auto_delete),
+                            title: Text('$_retentionCandidates backed-up items are older than '
+                                '$_retentionMonths month${_retentionMonths == 1 ? '' : 's'}'),
+                            subtitle: const Text('Each is re-verified on the server before removal.'),
+                            trailing: FilledButton(
+                              onPressed: _applyRetention,
+                              child: const Text('Remove'),
+                            ),
                           ),
                         ),
                       ],

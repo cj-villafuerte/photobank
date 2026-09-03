@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'background.dart' show backlogThreshold;
 import 'library_page.dart';
+import 'notifications.dart';
 
 class SettingsPage extends StatefulWidget {
   final PhotobankApi api;
@@ -13,6 +16,9 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   Map<String, dynamic>? _me;
+  bool _retention = false;
+  int _months = 2;
+  bool _notify = false;
 
   @override
   void initState() {
@@ -20,6 +26,39 @@ class _SettingsPageState extends State<SettingsPage> {
     widget.api.me().then((m) {
       if (mounted) setState(() => _me = m);
     }).catchError((_) {});
+    SharedPreferences.getInstance().then((p) {
+      if (!mounted) return;
+      setState(() {
+        _retention = p.getBool('retention_enabled') ?? false;
+        _months = p.getInt('retention_months') ?? 2;
+        _notify = p.getBool('notify_backlog') ?? false;
+      });
+    });
+  }
+
+  Future<void> _setRetention(bool on) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('retention_enabled', on);
+    setState(() => _retention = on);
+  }
+
+  Future<void> _setMonths(int m) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setInt('retention_months', m);
+    setState(() => _months = m);
+  }
+
+  Future<void> _setNotify(bool on) async {
+    if (on && !await requestNotificationPermission()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Notifications are blocked - enable them in iOS Settings > Photobank')));
+      }
+      return;
+    }
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('notify_backlog', on);
+    setState(() => _notify = on);
   }
 
   @override
@@ -59,6 +98,51 @@ class _SettingsPageState extends State<SettingsPage> {
               leading: const Icon(Icons.dns),
               title: Text(widget.api.baseUrl),
               subtitle: const Text('Change passwords and manage users in the web app'),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text('Phone storage', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Card(
+            child: Column(
+              children: [
+                SwitchListTile(
+                  title: const Text('Keep only recent media on this phone'),
+                  subtitle: Text(
+                    _retention
+                        ? 'Backed-up items older than $_months month${_months == 1 ? '' : 's'} '
+                          'are removed from the phone automatically (server-verified first).'
+                        : 'Off - nothing is removed automatically.',
+                  ),
+                  value: _retention,
+                  onChanged: _setRetention,
+                ),
+                if (_retention)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Row(
+                      children: [
+                        const Text('Keep the last'),
+                        const SizedBox(width: 12),
+                        DropdownButton<int>(
+                          value: _months,
+                          items: const [1, 2, 3, 6, 12]
+                              .map((m) => DropdownMenuItem(value: m, child: Text('$m month${m == 1 ? '' : 's'}')))
+                              .toList(),
+                          onChanged: (m) => m == null ? null : _setMonths(m),
+                        ),
+                      ],
+                    ),
+                  ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Remind me when backups pile up'),
+                  subtitle: const Text(
+                      'Notification once $backlogThreshold+ items are waiting (needs Background backup on).'),
+                  value: _notify,
+                  onChanged: _setNotify,
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 20),

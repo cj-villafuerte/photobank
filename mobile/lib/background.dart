@@ -3,7 +3,11 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'notifications.dart';
 import 'sync_service.dart';
+
+const backlogThreshold = 100; // unbacked items before we nudge the user
+const backlogNoticeInterval = Duration(hours: 24);
 
 Future<PhotobankApi?> restoreApi() async {
   final prefs = await SharedPreferences.getInstance();
@@ -38,6 +42,28 @@ Future<void> backgroundSyncSlice({Duration budget = const Duration(seconds: 22)}
   }
   await prefs.setString('last_bg_sync',
       '${DateTime.now().toIso8601String()}|${uploadedAny ? 'uploaded' : 'nothing new'}');
+
+  // rolling retention: best effort in the background (iOS may defer the
+  // deletion confirmation to the next foreground launch)
+  if (prefs.getBool('retention_enabled') ?? false) {
+    try {
+      await service.applyRetention(prefs.getInt('retention_months') ?? 2);
+    } catch (_) {}
+  }
+
+  // backlog nudge: unbacked media piling up (e.g. away from home Wi-Fi)
+  if (prefs.getBool('notify_backlog') ?? false) {
+    try {
+      final pending = await service.pendingCount();
+      final last = prefs.getInt('last_backlog_notice') ?? 0;
+      final due = DateTime.now().millisecondsSinceEpoch - last >
+          backlogNoticeInterval.inMilliseconds;
+      if (pending >= backlogThreshold && due) {
+        await showBackupPressure(pending);
+        await prefs.setInt('last_backlog_notice', DateTime.now().millisecondsSinceEpoch);
+      }
+    } catch (_) {}
+  }
 }
 
 /// Android-only: runs when the app process is dead. iOS relaunches the app
