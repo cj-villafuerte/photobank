@@ -124,6 +124,15 @@ class AssetText(Base):
     h: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+class AppSetting(Base):
+    """Server-wide key/value settings (e.g. redundancy backup config)."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class Album(Base):
     __tablename__ = "albums"
     __table_args__ = (Index("ix_albums_owner", "owner_id"),)

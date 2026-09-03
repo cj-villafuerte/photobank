@@ -1,8 +1,126 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import { useUser } from "../App";
+import { fmtBytes } from "../components/PhotoGrid";
 import { useToast } from "../components/Toast";
+
+declare global {
+  interface Window {
+    pywebview?: { api?: { pick_folder?: () => Promise<string | null> } };
+  }
+}
+
+/** Admin-only: mirror the media library to a folder of the user's choosing. */
+function RedundancyBackup() {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["backup"],
+    queryFn: api.backup,
+    refetchInterval: (q) => (q.state.data?.status.running ? 1500 : 15000),
+  });
+  const [dir, setDir] = useState("");
+  const [auto, setAuto] = useState(false);
+  const [thumbs, setThumbs] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const canBrowse = typeof window !== "undefined" && !!window.pywebview?.api?.pick_folder;
+
+  useEffect(() => {
+    if (data) {
+      setDir(data.config.dir ?? "");
+      setAuto(data.config.auto);
+      setThumbs(data.config.include_thumbs);
+    }
+  }, [data]);
+
+  const browse = async () => {
+    const picked = await window.pywebview!.api!.pick_folder!();
+    if (picked) setDir(picked);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.backupSettings(dir.trim() || null, auto, thumbs);
+      toast("Backup settings saved");
+      qc.invalidateQueries({ queryKey: ["backup"] });
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Could not save", true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runNow = async () => {
+    try {
+      await api.backupRun();
+      toast("Backup started");
+      qc.invalidateQueries({ queryKey: ["backup"] });
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Could not start backup", true);
+    }
+  };
+
+  const status = data?.status;
+  const progress = data?.progress;
+  const result = status?.last_result;
+
+  return (
+    <>
+      <h2 className="settings-heading">Redundancy backup</h2>
+      <div className="settings-card" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <p className="muted" style={{ fontSize: "0.85rem" }}>
+          Mirrors your originals (and a database snapshot) to a folder you choose — an external
+          drive, NAS, or second disk. Only new or changed files are copied; nothing is ever deleted
+          at the destination.
+        </p>
+        <div className="row">
+          <input
+            style={{ flex: 1, minWidth: 260 }}
+            placeholder={canBrowse ? "Choose a folder…" : "D:\\PhotobankBackup"}
+            value={dir}
+            onChange={(e) => setDir(e.target.value)}
+          />
+          {canBrowse && <button onClick={browse}>Browse…</button>}
+        </div>
+        <label className="row" style={{ gap: 8 }}>
+          <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
+          Back up automatically every day
+        </label>
+        <label className="row" style={{ gap: 8 }}>
+          <input type="checkbox" checked={thumbs} onChange={(e) => setThumbs(e.target.checked)} />
+          Include thumbnails (regenerable; skip to save space)
+        </label>
+        <div className="row">
+          <button className="primary" onClick={save} disabled={saving}>
+            Save
+          </button>
+          <button onClick={runNow} disabled={!data?.config.dir || status?.running}>
+            {status?.running ? "Backing up…" : "Back up now"}
+          </button>
+        </div>
+        {status?.running && progress && (
+          <div className="muted" style={{ fontSize: "0.85rem" }}>
+            {progress.phase} · {progress.scanned ?? 0} scanned · {progress.copied ?? 0} copied (
+            {fmtBytes(progress.bytes ?? 0)}){progress.errors ? ` · ${progress.errors} errors` : ""}
+          </div>
+        )}
+        {!status?.running && status?.last_run && (
+          <div className="muted" style={{ fontSize: "0.85rem" }}>
+            Last run {new Date(status.last_run).toLocaleString()}:{" "}
+            {result?.error
+              ? `failed — ${result.error}`
+              : `${result?.copied ?? 0} files copied (${fmtBytes(result?.bytes ?? 0)}), ${
+                  result?.scanned ?? 0
+                } checked${result?.errors ? `, ${result.errors} errors` : ""}. ${result?.database ?? ""}`}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
 
 export default function Settings() {
   const user = useUser();
@@ -84,6 +202,8 @@ export default function Settings() {
           {busy ? "…" : "Change password"}
         </button>
       </form>
+
+      {user.is_admin && <RedundancyBackup />}
 
       <h2 className="settings-heading">Storage</h2>
       <Link to="/duplicates">

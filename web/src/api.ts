@@ -90,6 +90,24 @@ export interface Stats {
   daily: DailyStat[];
 }
 
+export interface BackupState {
+  config: { dir: string | null; auto: boolean; include_thumbs: boolean };
+  status: {
+    running: boolean;
+    last_run: string | null;
+    last_result: {
+      ok?: boolean;
+      scanned?: number;
+      copied?: number;
+      bytes?: number;
+      errors?: number;
+      database?: string;
+      error?: string;
+    } | null;
+  };
+  progress: { phase?: string; scanned?: number; copied?: number; bytes?: number; errors?: number };
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -192,6 +210,15 @@ export const api = {
       method: "DELETE",
       body: JSON.stringify({ asset_ids }),
     }),
+
+  // redundancy backup (admin)
+  backup: () => request<BackupState>("/api/backup"),
+  backupSettings: (dir: string | null, auto: boolean, include_thumbs: boolean) =>
+    request<BackupState>("/api/backup/settings", {
+      method: "PUT",
+      body: JSON.stringify({ dir, auto, include_thumbs }),
+    }),
+  backupRun: () => request<{ started: boolean }>("/api/backup/run", { method: "POST" }),
 
   // admin
   users: () => request<User[]>("/api/admin/users"),

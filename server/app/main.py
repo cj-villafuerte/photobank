@@ -9,11 +9,12 @@ from fastapi.staticfiles import StaticFiles
 from pillow_heif import register_heif_opener
 
 from . import discovery, storage
+from .backup import BackupManager
 from .config import settings
 from .db import IS_SQLITE, SessionLocal, engine
 from .ingest import ThumbnailWorker
 from .models import Base
-from .routers import admin, albums, assets, auth
+from .routers import admin, albums, assets, auth, backup
 
 logging.basicConfig(level=logging.INFO)
 
@@ -34,9 +35,14 @@ async def lifespan(app: FastAPI):
     worker = ThumbnailWorker(SessionLocal)
     app.state.thumb_worker = worker
     await worker.start()
+    backups = BackupManager(SessionLocal)
+    await backups.load()
+    backups.start()
+    app.state.backup = backups
     mdns = await discovery.register(settings.port)
     yield
     await discovery.unregister(mdns)
+    await backups.stop()
     await worker.stop()
 
 
@@ -46,6 +52,7 @@ app.include_router(auth.router)
 app.include_router(assets.router)
 app.include_router(albums.router)
 app.include_router(admin.router)
+app.include_router(backup.router)
 
 
 @app.get("/api/health")

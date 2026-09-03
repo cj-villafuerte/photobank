@@ -116,8 +116,18 @@ def main() -> None:
     else:
         import webview
 
+        class DesktopApi:
+            """Exposed to the web UI as window.pywebview.api (native dialogs)."""
+
+            def pick_folder(self):
+                result = window.create_file_dialog(webview.FOLDER_DIALOG)
+                if result:
+                    return result[0] if isinstance(result, (list, tuple)) else result
+                return None
+
         window = webview.create_window(
-            "Photobank", url, width=1280, height=850, min_size=(700, 500)
+            "Photobank", url, width=1280, height=850, min_size=(700, 500),
+            js_api=DesktopApi(),
         )
         tray = _make_tray(window, url)
 
