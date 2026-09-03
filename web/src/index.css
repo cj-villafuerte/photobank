@@ -42,7 +42,7 @@ button.danger { color: var(--danger); }
 button.danger:hover { border-color: var(--danger); }
 button:disabled { opacity: 0.5; cursor: default; }
 
-input {
+input, select {
   font: inherit;
   background: var(--bg-raised);
   border: 1px solid var(--border);
@@ -50,7 +50,7 @@ input {
   border-radius: 6px;
   padding: 8px 12px;
 }
-input:focus { outline: none; border-color: var(--accent); }
+input:focus, select:focus { outline: none; border-color: var(--accent); }
 
 /* ---------- nav ---------- */
 .nav {
@@ -121,6 +121,11 @@ input:focus { outline: none; border-color: var(--accent); }
   left: 6px;
   font-size: 0.65rem;
   letter-spacing: 0.03em;
+}
+.cell .badge.size {
+  top: auto;
+  bottom: 6px;
+  font-size: 0.7rem;
 }
 .cell .fav {
   position: absolute;

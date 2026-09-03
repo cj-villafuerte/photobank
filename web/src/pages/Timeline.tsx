@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, AssetThin } from "../api";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, AssetThin, SizeSort } from "../api";
 import PhotoGrid from "../components/PhotoGrid";
 import Lightbox from "../components/Lightbox";
 import UploadButton from "../components/UploadButton";
@@ -81,6 +81,17 @@ export default function Timeline({ favorites }: { favorites: boolean }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
   const [albumPick, setAlbumPick] = useState("");
+  const [sort, setSort] = useState<"date" | SizeSort>("date");
+
+  const PAGE = 200;
+  const sizeQuery = useInfiniteQuery({
+    queryKey: ["sizelist", sort, favorites],
+    queryFn: ({ pageParam }) => api.listAssets(sort as SizeSort, pageParam, PAGE, favorites),
+    getNextPageParam: (last, pages) => (last.length === PAGE ? pages.length * PAGE : undefined),
+    initialPageParam: 0,
+    enabled: sort !== "date",
+  });
+  const sizeAssets = sizeQuery.data?.pages.flat() ?? [];
 
   const { data: buckets, isLoading } = useQuery({
     queryKey: ["buckets", favorites],
@@ -97,6 +108,7 @@ export default function Timeline({ favorites }: { favorites: boolean }) {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["buckets"] });
     qc.invalidateQueries({ queryKey: ["bucket"] });
+    qc.invalidateQueries({ queryKey: ["sizelist"] });
   };
 
   const toggleSelect = (asset: AssetThin) => {
@@ -162,7 +174,14 @@ export default function Timeline({ favorites }: { favorites: boolean }) {
     <div className="page">
       <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
         <h1 style={{ marginBottom: 0 }}>{favorites ? "Favorites" : "Timeline"}</h1>
-        <UploadButton />
+        <div className="row">
+          <select value={sort} onChange={(e) => setSort(e.target.value as "date" | SizeSort)}>
+            <option value="date">Newest first</option>
+            <option value="size_desc">Largest first</option>
+            <option value="size_asc">Smallest first</option>
+          </select>
+          <UploadButton />
+        </div>
       </div>
       <p className="muted" style={{ marginBottom: 12, fontSize: "0.85rem" }}>
         Tip: Ctrl+click or right-click a photo to select multiple.
@@ -190,23 +209,48 @@ export default function Timeline({ favorites }: { favorites: boolean }) {
         </div>
       )}
 
-      {isLoading && <p className="muted">Loading…</p>}
-      {buckets && buckets.length === 0 && (
-        <p className="muted">
-          {favorites ? "No favorites yet." : "Your library is empty — upload some photos!"}
-        </p>
+      {sort === "date" ? (
+        <>
+          {isLoading && <p className="muted">Loading…</p>}
+          {buckets && buckets.length === 0 && (
+            <p className="muted">
+              {favorites ? "No favorites yet." : "Your library is empty — upload some photos!"}
+            </p>
+          )}
+          {buckets?.map((b) => (
+            <MonthSection
+              key={b.bucket}
+              bucket={b.bucket}
+              count={b.count}
+              favorites={favorites}
+              selected={selected}
+              onOpen={(assets, index) => setLightbox({ assets, index })}
+              onToggleSelect={toggleSelect}
+            />
+          ))}
+        </>
+      ) : (
+        <>
+          {sizeQuery.isLoading && <p className="muted">Loading…</p>}
+          <PhotoGrid
+            assets={sizeAssets}
+            selected={selected}
+            showSize
+            onOpen={(a) => setLightbox({ assets: sizeAssets, index: sizeAssets.indexOf(a) })}
+            onToggleSelect={(a) => toggleSelect(a)}
+          />
+          {sizeQuery.hasNextPage && (
+            <div className="row" style={{ justifyContent: "center", margin: 16 }}>
+              <button
+                onClick={() => sizeQuery.fetchNextPage()}
+                disabled={sizeQuery.isFetchingNextPage}
+              >
+                {sizeQuery.isFetchingNextPage ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )}
+        </>
       )}
-      {buckets?.map((b) => (
-        <MonthSection
-          key={b.bucket}
-          bucket={b.bucket}
-          count={b.count}
-          favorites={favorites}
-          selected={selected}
-          onOpen={(assets, index) => setLightbox({ assets, index })}
-          onToggleSelect={toggleSelect}
-        />
-      ))}
 
       {lightbox && (
         <Lightbox

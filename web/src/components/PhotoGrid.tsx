@@ -7,14 +7,22 @@ function fmtDuration(sec: number | null): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+export function fmtBytes(bytes: number): string {
+  if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(1)} GB`;
+  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${bytes} B`;
+}
+
 interface Props {
   assets: AssetThin[];
   selected: Set<string>;
   onOpen: (asset: AssetThin) => void;
   onToggleSelect: (asset: AssetThin, shiftKey: boolean) => void;
+  showSize?: boolean;
 }
 
-export default function PhotoGrid({ assets, selected, onOpen, onToggleSelect }: Props) {
+export default function PhotoGrid({ assets, selected, onOpen, onToggleSelect, showSize }: Props) {
   const selecting = selected.size > 0;
   return (
     <div className="grid">
@@ -37,6 +45,7 @@ export default function PhotoGrid({ assets, selected, onOpen, onToggleSelect }: 
             <img src={thumbUrl(a.id)} loading="lazy" alt="" draggable={false} />
             {a.asset_type === "video" && <span className="badge">{fmtDuration(a.duration_sec)}</span>}
             {a.has_live_video && <span className="badge live">◉ LIVE</span>}
+            {showSize && <span className="badge size">{fmtBytes(a.file_size)}</span>}
             {a.is_favorite && <span className="fav">❤️</span>}
             {isSel && <span className="check">✓</span>}
           </div>

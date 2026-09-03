@@ -62,6 +62,7 @@ class AssetThin(BaseModel):
     is_favorite: bool
     thumb_status: str
     has_live_video: bool = False
+    file_size: int = 0
 
 
 class UploadResult(BaseModel):

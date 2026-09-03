@@ -17,7 +17,10 @@ export interface AssetThin {
   is_favorite: boolean;
   thumb_status: string;
   has_live_video: boolean;
+  file_size: number;
 }
+
+export type SizeSort = "size_desc" | "size_asc";
 
 export interface AssetFull extends AssetThin {
   original_filename: string;
@@ -102,6 +105,11 @@ export const api = {
     request<AssetThin[]>(`/api/timeline/bucket/${bucket}?favorites=${favorites}`),
 
   // assets
+  listAssets: (sort: SizeSort, offset: number, limit: number, favorites = false) =>
+    request<AssetThin[]>(
+      `/api/assets/list?sort=${sort}&offset=${offset}&limit=${limit}&favorites=${favorites}`
+    ),
+  reveal: (id: string) => request<void>(`/api/assets/${id}/reveal`, { method: "POST" }),
   upload: (file: File): Promise<UploadResult> => {
     const form = new FormData();
     form.append("file", file);

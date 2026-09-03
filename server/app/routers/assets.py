@@ -1,4 +1,5 @@
 import hashlib
+import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -175,6 +176,53 @@ async def assets_exist(
             for r in rows
         ],
     )
+
+
+SORT_ORDERS = {
+    "size_desc": lambda: Asset.file_size.desc(),
+    "size_asc": lambda: Asset.file_size.asc(),
+    "date_desc": lambda: Asset.taken_at.desc(),
+    "date_asc": lambda: Asset.taken_at.asc(),
+}
+
+
+@router.get("/assets/list", response_model=list[AssetThin])
+async def list_assets(
+    sort: str = "size_desc",
+    offset: int = 0,
+    limit: int = 200,
+    favorites: bool = False,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Flat, sortable listing (used by the by-size views)."""
+    order = SORT_ORDERS.get(sort)
+    if order is None:
+        raise HTTPException(status_code=400, detail=f"Unknown sort: {sort}")
+    stmt = (
+        select(Asset)
+        .where(Asset.owner_id == user.id, Asset.trashed_at.is_(None))
+        .order_by(order(), Asset.id)
+        .offset(max(offset, 0))
+        .limit(min(max(limit, 1), 500))
+    )
+    if favorites:
+        stmt = stmt.where(Asset.is_favorite)
+    return (await db.scalars(stmt)).all()
+
+
+@router.post("/assets/{asset_id}/reveal", status_code=204)
+async def reveal_in_explorer(
+    asset_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Opens File Explorer on the SERVER machine with the original selected."""
+    asset = await _get_owned_asset(asset_id, user, db)
+    path = storage.absolute_from_root(asset.file_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File missing from storage")
+    subprocess.Popen(["explorer", f"/select,{path}"])
 
 
 @router.post("/assets/{asset_id}/live-video", response_model=AssetOut)

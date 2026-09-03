@@ -55,8 +55,9 @@ class RemoteAsset {
   final bool isFavorite;
   final double? durationSec;
   final bool hasLiveVideo;
+  final int fileSize;
   const RemoteAsset(this.id, this.assetType, this.takenAt, this.isFavorite, this.durationSec,
-      this.hasLiveVideo);
+      this.hasLiveVideo, this.fileSize);
 
   factory RemoteAsset.fromJson(Map<String, dynamic> j) => RemoteAsset(
         j['id'] as String,
@@ -65,6 +66,7 @@ class RemoteAsset {
         j['is_favorite'] as bool? ?? false,
         (j['duration_sec'] as num?)?.toDouble(),
         j['has_live_video'] as bool? ?? false,
+        (j['file_size'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -205,6 +207,16 @@ class PhotobankApi {
     if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
     return (jsonDecode(res.body) as List)
         .map((b) => TimelineBucket(b['bucket'] as String, b['count'] as int))
+        .toList();
+  }
+
+  Future<List<RemoteAsset>> listAssets(String sort, int offset, int limit) async {
+    final res = await http.get(
+        _u('/api/assets/list?sort=$sort&offset=$offset&limit=$limit'),
+        headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    return (jsonDecode(res.body) as List)
+        .map((j) => RemoteAsset.fromJson(j as Map<String, dynamic>))
         .toList();
   }
 

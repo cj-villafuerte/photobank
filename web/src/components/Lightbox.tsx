@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { AssetThin, downloadUrl, liveVideoUrl, originalUrl, previewUrl } from "../api";
+import { api, ApiError, AssetThin, downloadUrl, liveVideoUrl, originalUrl, previewUrl } from "../api";
+import { useToast } from "./Toast";
 
 interface Props {
   assets: AssetThin[];
@@ -20,6 +21,16 @@ export default function Lightbox({
 }: Props) {
   const asset = assets[index];
   const [liveActive, setLiveActive] = useState(false);
+  const toast = useToast();
+
+  const reveal = async () => {
+    try {
+      await api.reveal(asset.id);
+      toast("Opened in File Explorer on the server PC");
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Could not open Explorer", true);
+    }
+  };
 
   useEffect(() => setLiveActive(false), [index]);
 
@@ -58,6 +69,9 @@ export default function Lightbox({
         <a href={downloadUrl(asset.id)} download>
           <button>⬇ Download</button>
         </a>
+        <button onClick={reveal} title="Opens File Explorer on the server machine">
+          📂 Explorer
+        </button>
         {onTrash && (
           <button className="danger" onClick={() => onTrash(asset)}>
             🗑 Trash

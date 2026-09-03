@@ -20,6 +20,12 @@ class _LibraryPageState extends State<LibraryPage> {
   List<TimelineBucket>? _buckets;
   String? _error;
   final Map<String, List<RemoteAsset>> _loaded = {};
+  String _sort = 'date'; // date | size_desc | size_asc
+  List<RemoteAsset> _sizeAssets = [];
+  bool _sizeHasMore = true;
+  bool _sizeLoading = false;
+
+  static const _pageSize = 200;
 
   @override
   void initState() {
@@ -32,13 +38,44 @@ class _LibraryPageState extends State<LibraryPage> {
       _error = null;
       _buckets = null;
       _loaded.clear();
+      _sizeAssets = [];
+      _sizeHasMore = true;
     });
     try {
-      final buckets = await widget.api.buckets();
-      if (mounted) setState(() => _buckets = buckets);
+      if (_sort == 'date') {
+        final buckets = await widget.api.buckets();
+        if (mounted) setState(() => _buckets = buckets);
+      } else {
+        await _loadMoreBySize();
+      }
     } catch (e) {
       if (mounted) setState(() => _error = 'Could not load library: $e');
     }
+  }
+
+  Future<void> _loadMoreBySize() async {
+    if (_sizeLoading || !_sizeHasMore) return;
+    setState(() => _sizeLoading = true);
+    try {
+      final page = await widget.api.listAssets(_sort, _sizeAssets.length, _pageSize);
+      if (mounted) {
+        setState(() {
+          _sizeAssets = [..._sizeAssets, ...page];
+          _sizeHasMore = page.length == _pageSize;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Could not load library: $e');
+    } finally {
+      if (mounted) setState(() => _sizeLoading = false);
+    }
+  }
+
+  static String fmtBytes(int bytes) {
+    if (bytes >= 1073741824) return '${(bytes / 1073741824).toStringAsFixed(1)} GB';
+    if (bytes >= 1048576) return '${(bytes / 1048576).toStringAsFixed(1)} MB';
+    if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    return '$bytes B';
   }
 
   Future<List<RemoteAsset>> _bucketAssets(String bucket) async {
@@ -71,19 +108,108 @@ class _LibraryPageState extends State<LibraryPage> {
         ),
       );
     }
+    final sortBar = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      child: SegmentedButton<String>(
+        segments: const [
+          ButtonSegment(value: 'date', label: Text('Date')),
+          ButtonSegment(value: 'size_desc', label: Text('Largest')),
+          ButtonSegment(value: 'size_asc', label: Text('Smallest')),
+        ],
+        selected: {_sort},
+        onSelectionChanged: (sel) {
+          setState(() => _sort = sel.first);
+          _load();
+        },
+      ),
+    );
+
+    if (_sort != 'date') {
+      return Column(
+        children: [
+          sortBar,
+          Expanded(
+            child: _sizeAssets.isEmpty && _sizeLoading
+                ? const Center(child: CircularProgressIndicator())
+                : NotificationListener<ScrollNotification>(
+                    onNotification: (n) {
+                      if (n.metrics.pixels > n.metrics.maxScrollExtent - 800) {
+                        _loadMoreBySize();
+                      }
+                      return false;
+                    },
+                    child: GridView.builder(
+                      padding: const EdgeInsets.all(4),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
+                      itemCount: _sizeAssets.length,
+                      itemBuilder: (context, i) {
+                        final a = _sizeAssets[i];
+                        return GestureDetector(
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AssetViewer(
+                                  api: widget.api, assets: _sizeAssets, initialIndex: i),
+                            ),
+                          ),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.network(
+                                widget.api.thumbUrl(a.id),
+                                headers: widget.api.authHeaders,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => Container(
+                                    color: Colors.white10,
+                                    child: const Icon(Icons.broken_image, size: 18)),
+                              ),
+                              Positioned(
+                                right: 4,
+                                bottom: 4,
+                                child: Container(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(fmtBytes(a.fileSize),
+                                      style: const TextStyle(fontSize: 10)),
+                                ),
+                              ),
+                              if (a.assetType == 'video')
+                                const Positioned(
+                                  right: 4, top: 4,
+                                  child: Icon(Icons.play_circle_fill,
+                                      size: 18, shadows: [Shadow(blurRadius: 4)]),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+          ),
+        ],
+      );
+    }
+
     final buckets = _buckets;
     if (buckets == null) return const Center(child: CircularProgressIndicator());
     if (buckets.isEmpty) return const Center(child: Text('The server library is empty.'));
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.builder(
-        itemCount: buckets.length,
-        itemBuilder: (context, i) => _BucketSection(
-          api: widget.api,
-          bucket: buckets[i],
-          label: _monthLabel(buckets[i].bucket),
-          loader: _bucketAssets,
-        ),
+        itemCount: buckets.length + 1,
+        itemBuilder: (context, i) => i == 0
+            ? sortBar
+            : _BucketSection(
+                api: widget.api,
+                bucket: buckets[i - 1],
+                label: _monthLabel(buckets[i - 1].bucket),
+                loader: _bucketAssets,
+              ),
       ),
     );
   }
