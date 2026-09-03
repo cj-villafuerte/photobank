@@ -161,6 +161,16 @@ class BackupManager:
                         log.warning("backup copy failed: %s", src)
 
         db_note = self._snapshot_database(dest)
+        self.progress["phase"] = "JSON export"
+        try:
+            from .export import export_json
+
+            counts = export_json(dest / "photobank-export.json")
+            db_note += f"; JSON export: {counts.get('assets', 0)} assets, {counts.get('users', 0)} users"
+        except Exception as e:
+            log.exception("json export failed")
+            db_note += f"; JSON export failed: {e}"
+            errors += 1
         return {
             "ok": errors == 0,
             "scanned": scanned,

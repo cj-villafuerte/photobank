@@ -219,6 +219,14 @@ export const api = {
       body: JSON.stringify({ dir, auto, include_thumbs }),
     }),
   backupRun: () => request<{ started: boolean }>("/api/backup/run", { method: "POST" }),
+  backupImport: (file: File, replace: boolean) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ imported: Record<string, number>; replace: boolean }>(
+      `/api/backup/import?replace=${replace}`,
+      { method: "POST", body: form }
+    );
+  },
 
   // admin
   users: () => request<User[]>("/api/admin/users"),

@@ -118,7 +118,68 @@ function RedundancyBackup() {
           </div>
         )}
       </div>
+
+      <h2 className="settings-heading">Move to another computer</h2>
+      <div className="settings-card" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <p className="muted" style={{ fontSize: "0.85rem" }}>
+          Every backup run writes <code>photobank-export.json</code> — accounts, all photo
+          metadata, albums, favorites, hidden state, and the text index — in a portable format.
+          On a new computer: copy the backup folder's <code>library</code> into the new photo
+          storage, install Photobank, then import that file here. You can also export on demand.
+        </p>
+        <div className="row">
+          <a href="/api/backup/export" download>
+            <button>⬇ Export library data (JSON)</button>
+          </a>
+        </div>
+        <ImportBox />
+      </div>
     </>
+  );
+}
+
+function ImportBox() {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [replace, setReplace] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    if (!file) return;
+    const warning = replace
+      ? "REPLACE wipes every user, photo record, album and setting on this server and restores the file's contents exactly. Continue?"
+      : "MERGE adds records from the file that don't exist here yet (existing ones are kept). Continue?";
+    if (!window.confirm(warning)) return;
+    setBusy(true);
+    try {
+      const r = await api.backupImport(file, replace);
+      const parts = Object.entries(r.imported).map(([t, n]) => `${t}: ${n}`);
+      toast(`Imported — ${parts.join(", ")}`);
+      qc.invalidateQueries();
+      setFile(null);
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Import failed", true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="row" style={{ alignItems: "center" }}>
+      <input
+        type="file"
+        accept="application/json,.json"
+        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+      />
+      <label className="row" style={{ gap: 6 }}>
+        <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
+        Replace everything (otherwise merge)
+      </label>
+      <button className={replace ? "danger" : undefined} onClick={run} disabled={!file || busy}>
+        {busy ? "Importing…" : "⬆ Import"}
+      </button>
+    </div>
   );
 }
 
