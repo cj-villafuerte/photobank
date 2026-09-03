@@ -135,7 +135,7 @@ export default function Timeline({ favorites }: { favorites: boolean }) {
 
   const hideSelected = async () => {
     await api.hide(Array.from(selected));
-    toast(`${selected.size} hidden — find them in Settings`);
+    toast(`${selected.size} hidden`);
     setSelected(new Set());
     invalidate();
   };

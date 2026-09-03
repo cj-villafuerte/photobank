@@ -289,6 +289,9 @@ table.admin th { color: var(--faint); font-weight: 500; font-size: 10px; border-
 .settings-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: var(--hairline); }
 .settings-row:last-child { border-bottom: none; }
 .settings-row .muted { font: 400 10px var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; align-self: center; }
+/* the hidden-photos entry, once pulled into existence */
+.pb-reveal { animation: pb-reveal 0.35s ease-out; }
+@keyframes pb-reveal { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 /* ---------- toasts ---------- */
 .toast-area { position: fixed; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 200; }

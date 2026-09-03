@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -164,6 +165,38 @@ class _SettingsPageState extends State<SettingsPage> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
+  // The hidden-photos entry is not in the list until the reader reaches the end
+  // and keeps dragging past it (finger down - a fling's overshoot doesn't count).
+  bool _hiddenRevealed = false;
+  double _pull = 0;
+  static const _revealPull = 72.0;
+
+  bool _onScroll(ScrollNotification n) {
+    if (_hiddenRevealed) return false;
+    double over;
+    if (n is OverscrollNotification) {
+      // clamping physics (Android): per-event deltas past the edge
+      if (n.dragDetails == null) return false;
+      _pull += n.overscroll > 0 ? n.overscroll : 0;
+      over = _pull;
+    } else if (n is ScrollUpdateNotification) {
+      // bouncing physics (iOS): position runs past maxScrollExtent while dragging
+      if (n.dragDetails == null) return false;
+      over = n.metrics.pixels - n.metrics.maxScrollExtent;
+      if (over <= 0) _pull = 0;
+    } else if (n is ScrollEndNotification) {
+      _pull = 0;
+      return false;
+    } else {
+      return false;
+    }
+    if (over >= _revealPull) {
+      HapticFeedback.mediumImpact();
+      setState(() => _hiddenRevealed = true);
+    }
+    return false;
+  }
+
   Future<void> _setNotify(bool on) async {
     if (on && !await requestNotificationPermission()) {
       if (mounted) {
@@ -182,7 +215,10 @@ class _SettingsPageState extends State<SettingsPage> {
     final me = _me;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
+      body: NotificationListener<ScrollNotification>(
+        onNotification: _onScroll,
+        child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
           Text('Profile', style: Theme.of(context).textTheme.titleSmall),
@@ -380,22 +416,25 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
           ),
-          const SizedBox(height: 120),
-          const Divider(),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.visibility_off),
-              title: const Text('Hidden photos'),
-              subtitle: const Text('Only visible here'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => HiddenPage(api: widget.api)),
+          const SizedBox(height: 32),
+          if (_hiddenRevealed) ...[
+            const Divider(),
+            const SizedBox(height: 8),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.visibility_off),
+                title: const Text('Hidden photos'),
+                subtitle: const Text('Only visible here'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => HiddenPage(api: widget.api)),
+                ),
               ),
             ),
-          ),
+          ],
         ],
+        ),
       ),
     );
   }

@@ -534,7 +534,7 @@ class _AssetViewerState extends State<AssetViewer> {
                 case 'hide':
                   try {
                     await widget.api.hideAssets([asset.id]);
-                    _snack('Hidden - find it in Settings > Hidden photos');
+                    _snack('Hidden');
                     if (context.mounted) Navigator.pop(context);
                   } catch (e) {
                     _snack('Hide failed: $e');

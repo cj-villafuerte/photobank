@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
@@ -177,9 +177,66 @@ function ImportBox() {
   );
 }
 
+/**
+ * The hidden-photos entry is not on the page at all until the reader reaches the
+ * bottom and keeps pulling (wheel or touch) past the end. Pull distance only counts
+ * while already at the bottom and resets after a short pause, so scrolling down
+ * fast doesn't trip it - a deliberate extra pull does.
+ */
+function useBottomPullReveal(threshold = 120) {
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    if (revealed) return;
+    const atBottom = () =>
+      window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+    let pulled = 0;
+    let idle: number | undefined;
+    const bump = (delta: number) => {
+      if (delta <= 0 || !atBottom()) {
+        pulled = 0;
+        return;
+      }
+      pulled += delta;
+      window.clearTimeout(idle);
+      idle = window.setTimeout(() => (pulled = 0), 600);
+      if (pulled >= threshold) setRevealed(true);
+    };
+    let touchY: number | null = null;
+    const onWheel = (e: WheelEvent) => bump(e.deltaY);
+    const onTouchStart = (e: TouchEvent) => {
+      touchY = e.touches[0].clientY;
+      pulled = 0;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (touchY === null) return;
+      const y = e.touches[0].clientY;
+      bump(touchY - y); // finger moving up = pulling the page further
+      touchY = y;
+    };
+    const onTouchEnd = () => (touchY = null);
+    window.addEventListener("wheel", onWheel, { passive: true });
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", onTouchEnd);
+    return () => {
+      window.clearTimeout(idle);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [revealed, threshold]);
+  return revealed;
+}
+
 export default function Settings() {
   const user = useUser();
   const toast = useToast();
+  const showHidden = useBottomPullReveal();
+  const hiddenRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (showHidden) hiddenRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [showHidden]);
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -265,15 +322,19 @@ export default function Settings() {
         <button style={{ width: "100%" }}>🧹 Find duplicate photos</button>
       </Link>
 
-      <div style={{ height: 48 }} />
-      <hr style={{ border: "none", borderTop: "1px solid var(--border)" }} />
-      <div style={{ height: 16 }} />
-      <Link to="/settings/hidden">
-        <button style={{ width: "100%" }}>🙈 Hidden photos</button>
-      </Link>
-      <p className="muted" style={{ fontSize: "0.85rem", marginTop: 8 }}>
-        Hidden items don't appear in the timeline, albums, or search — only here.
-      </p>
+      <div style={{ height: 24 }} />
+      {showHidden && (
+        <div ref={hiddenRef} className="pb-reveal">
+          <hr style={{ border: "none", borderTop: "1px solid var(--border)" }} />
+          <div style={{ height: 16 }} />
+          <Link to="/settings/hidden">
+            <button style={{ width: "100%" }}>🙈 Hidden photos</button>
+          </Link>
+          <p className="muted" style={{ fontSize: "0.85rem", marginTop: 8 }}>
+            Hidden items don't appear in the timeline, albums, or search — only here.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

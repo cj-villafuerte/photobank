@@ -38,8 +38,9 @@ const _steps = [
       'Search finds text inside photos. Save anything back to the phone with one tap.'),
   _Step('05  SETTINGS',
       'You are in control.',
-      'Retention window, background backup, reminders, hidden photos, trash, and the app data on '
-      'this phone all live in Settings. You can show this tour again from there.'),
+      'Retention window, background backup, reminders, trash, and the app data on this phone '
+      'all live in Settings. Hidden photos are there too - pull up past the end of the list. '
+      'You can show this tour again from there.'),
 ];
 
 class _OnboardingPageState extends State<OnboardingPage> {
