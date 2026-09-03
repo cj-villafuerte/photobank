@@ -121,6 +121,8 @@ tray / menu-bar icon; closing the window keeps the server running for phone sync
   right-click → Open (unsigned app). Install helpers with `brew install ffmpeg tesseract`.
   Data lives in `~/Library/Application Support/Photobank`, photos in `~/Pictures/Photobank`.
 - Or locally on a Mac: `bash scripts/build-desktop.sh`.
+- **Icons:** `.\scripts\make-icons.ps1` regenerates every app icon (exe/.icns/tray, web favicon +
+  home-screen icons, iOS/Android launcher PNGs) from the one design in `scripts/make_icons.py`.
 
 ## Database redundancy (SQLite ⇄ PostgreSQL)
 

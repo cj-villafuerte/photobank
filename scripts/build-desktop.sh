@@ -17,11 +17,12 @@ pip install --quiet --disable-pip-version-check -r requirements.txt pyinstaller 
 echo "== Freezing Photobank =="
 EXTRA=()
 if [[ "$(uname)" == "Darwin" ]]; then
-  EXTRA+=(--osx-bundle-identifier com.neodata.photobank.desktop)
+  EXTRA+=(--osx-bundle-identifier com.neodata.photobank.desktop --icon "$ROOT/assets/icon/photobank.icns")
 fi
 pyinstaller --noconfirm --clean --onedir --windowed \
   --name Photobank \
   --add-data "$ROOT/web/dist:web_dist" \
+  --add-data "$ROOT/assets/icon/photobank-256.png:assets" \
   --collect-all pillow_heif \
   --hidden-import aiosqlite \
   "${EXTRA[@]}" \

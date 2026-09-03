@@ -5,6 +5,9 @@ __pycache__/
 web/node_modules/
 web/dist/
 
+# downloaded by scripts/make_icons.py
+assets/.fontcache/
+
 # build outputs
 server/dist/
 server/build/

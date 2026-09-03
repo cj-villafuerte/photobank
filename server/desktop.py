@@ -256,10 +256,24 @@ def _make_tray(window, url: str):
     except ImportError:
         return None
 
-    icon_img = Image.new("RGBA", (64, 64), (16, 20, 24, 255))
-    d = ImageDraw.Draw(icon_img)
-    d.rounded_rectangle((8, 18, 56, 50), radius=8, fill=(74, 158, 255, 255))
-    d.ellipse((24, 26, 40, 42), fill=(16, 20, 24, 255))
+    # the real mark (assets/icon, bundled by the build scripts); a drawn stand-in
+    # keeps the tray working from a source checkout that hasn't run make-icons
+    bundle = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    candidates = (
+        bundle / "assets" / "photobank-256.png",
+        Path(__file__).resolve().parents[1] / "assets" / "icon" / "photobank-256.png",
+    )
+    icon_img = None
+    for p in candidates:
+        if p.is_file():
+            icon_img = Image.open(p).convert("RGBA")
+            break
+    if icon_img is None:
+        icon_img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+        d = ImageDraw.Draw(icon_img)
+        d.rounded_rectangle((0, 0, 63, 63), radius=8, fill=(255, 255, 255, 255))
+        d.rectangle((18, 14, 26, 50), fill=(16, 20, 24, 255))
+        d.rectangle((40, 42, 48, 50), fill=(255, 74, 28, 255))
 
     def open_window(*_):
         window.show()

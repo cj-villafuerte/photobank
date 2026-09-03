@@ -19,7 +19,9 @@ Write-Host "== Freezing Photobank.exe ==" -ForegroundColor Cyan
 Push-Location "$root\server"
 & ".\.venv\Scripts\pyinstaller.exe" --noconfirm --clean --onedir --windowed `
     --name Photobank `
+    --icon "$root\assets\icon\photobank.ico" `
     --add-data "$root\web\dist;web_dist" `
+    --add-data "$root\assets\icon\photobank-256.png;assets" `
     --collect-all pillow_heif `
     --hidden-import aiosqlite `
     --hidden-import pystray._win32 `
