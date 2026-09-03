@@ -57,6 +57,23 @@ def pick_port(preferred: int) -> int:
 
 
 def main() -> None:
+    # windowed PyInstaller apps have no console: stdout/stderr are None, which
+    # crashes uvicorn's logging setup (isatty on None). Give them a sink and
+    # keep real logs in a file next to the config.
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+    import logging
+
+    APP_DIR.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        filename=str(APP_DIR / "photobank.log"),
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
     cfg = load_or_create_config()
     port = pick_port(int(cfg["port"]))
     db = str(cfg["db_path"]).replace("\\", "/")
@@ -74,7 +91,7 @@ def main() -> None:
     from app.main import app  # noqa: E402  (env is ready now)
 
     server = uvicorn.Server(
-        uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning")
+        uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning", log_config=None)
     )
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
