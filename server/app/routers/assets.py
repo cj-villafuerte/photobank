@@ -1,7 +1,7 @@
 import hashlib
 import subprocess
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
@@ -34,6 +34,13 @@ from ..schemas import (
 router = APIRouter(prefix="/api", tags=["assets"])
 
 CACHE_FOREVER = "private, max-age=31536000, immutable"
+
+
+def _date_bucket(db: AsyncSession, column, pg_fmt: str, sqlite_fmt: str):
+    """Date-formatting expression that works on both Postgres and SQLite."""
+    if db.get_bind().dialect.name == "sqlite":
+        return func.strftime(sqlite_fmt, column)
+    return func.to_char(column, pg_fmt)
 
 # 1x1 transparent PNG placeholder for assets whose thumbnails aren't ready
 PLACEHOLDER_PNG = bytes.fromhex(
@@ -284,7 +291,7 @@ async def timeline_buckets(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    bucket = func.to_char(Asset.taken_at, "YYYY-MM")
+    bucket = _date_bucket(db, Asset.taken_at, "YYYY-MM", "%Y-%m")
     stmt = (
         select(bucket.label("bucket"), func.count().label("count"))
         .where(Asset.owner_id == user.id, Asset.trashed_at.is_(None), Asset.hidden_at.is_(None))
@@ -314,7 +321,7 @@ async def timeline_bucket(
             Asset.owner_id == user.id,
             Asset.trashed_at.is_(None),
             Asset.hidden_at.is_(None),
-            func.to_char(Asset.taken_at, "YYYY-MM") == bucket,
+            _date_bucket(db, Asset.taken_at, "YYYY-MM", "%Y-%m") == bucket,
         )
         .order_by(Asset.taken_at.desc())
     )
@@ -564,11 +571,12 @@ async def stats(
             ).where(*base)
         )
     ).one()
-    day = func.to_char(Asset.taken_at, "YYYY-MM-DD")
+    day = _date_bucket(db, Asset.taken_at, "YYYY-MM-DD", "%Y-%m-%d")
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 3650)))
     daily_rows = (
         await db.execute(
             select(day.label("d"), func.count(), func.coalesce(func.sum(Asset.file_size), 0))
-            .where(*base, Asset.taken_at >= func.now() - text_interval(days))
+            .where(*base, Asset.taken_at >= cutoff)
             .group_by(day)
             .order_by(day)
         )
@@ -580,12 +588,6 @@ async def stats(
         video_count=totals[3],
         daily=[DailyStat(date=r[0], count=r[1], bytes=r[2]) for r in daily_rows],
     )
-
-
-def text_interval(days: int):
-    from sqlalchemy import text as sa_text
-
-    return sa_text(f"interval '{max(1, min(days, 3650))} days'")
 
 
 @router.get("/trash", response_model=list[AssetThin])

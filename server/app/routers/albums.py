@@ -3,6 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user
@@ -135,8 +136,9 @@ async def add_assets(
     ).all()
     if not owned:
         return
+    insert_fn = sqlite_insert if db.get_bind().dialect.name == "sqlite" else pg_insert
     await db.execute(
-        pg_insert(AlbumAsset)
+        insert_fn(AlbumAsset)
         .values([{"album_id": album.id, "asset_id": aid} for aid in owned])
         .on_conflict_do_nothing()
     )

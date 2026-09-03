@@ -1,5 +1,5 @@
-import uuid
-from datetime import datetime
+﻿import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     BigInteger,
@@ -11,12 +11,34 @@ from sqlalchemy import (
     Index,
     Integer,
     Text,
+    TypeDecorator,
     UniqueConstraint,
+    Uuid,
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class TZDateTime(TypeDecorator):
+    """Timezone-aware datetimes on both Postgres and SQLite.
+
+    SQLite has no timestamptz: we store naive UTC there and re-attach the UTC
+    tzinfo on read, so application code always sees aware datetimes.
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None and dialect.name == "sqlite" and value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class Base(DeclarativeBase):
@@ -26,14 +48,14 @@ class Base(DeclarativeBase):
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        TZDateTime(), nullable=False, server_default=func.now()
     )
 
 
@@ -46,9 +68,9 @@ class Asset(Base):
         Index("ix_assets_owner_favorite", "owner_id", postgresql_where=text("is_favorite")),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
     owner_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     checksum: Mapped[str] = mapped_column(Text, nullable=False)
     original_filename: Mapped[str] = mapped_column(Text, nullable=False)
@@ -59,15 +81,15 @@ class Asset(Base):
     width: Mapped[int | None] = mapped_column(Integer)
     height: Mapped[int | None] = mapped_column(Integer)
     duration_sec: Mapped[float | None] = mapped_column(Float)
-    taken_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    taken_at: Mapped[datetime] = mapped_column(TZDateTime(), nullable=False)
     taken_at_source: Mapped[str] = mapped_column(Text, nullable=False, default="upload")
     gps_lat: Mapped[float | None] = mapped_column(Double)
     gps_lon: Mapped[float | None] = mapped_column(Double)
     camera_make: Mapped[str | None] = mapped_column(Text)
     camera_model: Mapped[str | None] = mapped_column(Text)
     is_favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    trashed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    trashed_at: Mapped[datetime | None] = mapped_column(TZDateTime())
+    hidden_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     thumb_status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
     phash: Mapped[int | None] = mapped_column(BigInteger)  # dHash for near-duplicate detection
     ocr_status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
@@ -77,7 +99,7 @@ class Asset(Base):
     def has_live_video(self) -> bool:
         return self.live_video_path is not None
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        TZDateTime(), nullable=False, server_default=func.now()
     )
 
 
@@ -89,7 +111,7 @@ class AssetText(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     asset_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
+        Uuid(), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
     )
     word: Mapped[str] = mapped_column(Text, nullable=False)
     x: Mapped[float] = mapped_column(Float, nullable=False)
@@ -102,16 +124,16 @@ class Album(Base):
     __tablename__ = "albums"
     __table_args__ = (Index("ix_albums_owner", "owner_id"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
     owner_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
     cover_asset_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("assets.id", ondelete="SET NULL")
+        Uuid(), ForeignKey("assets.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        TZDateTime(), nullable=False, server_default=func.now()
     )
 
 
@@ -120,11 +142,11 @@ class AlbumAsset(Base):
     __table_args__ = (Index("ix_album_assets_asset", "asset_id"),)
 
     album_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("albums.id", ondelete="CASCADE"), primary_key=True
+        Uuid(), ForeignKey("albums.id", ondelete="CASCADE"), primary_key=True
     )
     asset_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True
+        Uuid(), ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True
     )
     added_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        TZDateTime(), nullable=False, server_default=func.now()
     )

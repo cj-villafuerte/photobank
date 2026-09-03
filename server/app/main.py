@@ -9,8 +9,9 @@ from pillow_heif import register_heif_opener
 
 from . import discovery, storage
 from .config import settings
-from .db import SessionLocal
+from .db import IS_SQLITE, SessionLocal, engine
 from .ingest import ThumbnailWorker
+from .models import Base
 from .routers import admin, albums, assets, auth
 
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +23,10 @@ WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 async def lifespan(app: FastAPI):
     register_heif_opener()
     storage.ensure_dirs()
+    if IS_SQLITE:
+        # SQLite mode bootstraps its schema directly; Alembic stays Postgres-only
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
     worker = ThumbnailWorker(SessionLocal)
     app.state.thumb_worker = worker
     await worker.start()
