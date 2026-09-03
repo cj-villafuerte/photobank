@@ -9,7 +9,7 @@ npm run build
 Pop-Location
 
 Write-Host "== Installing build tools ==" -ForegroundColor Cyan
-& "$root\server\.venv\Scripts\python.exe" -m pip install --quiet pyinstaller pywebview
+& "$root\server\.venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check pyinstaller pywebview 2>$null
 
 Write-Host "== Freezing Photobank.exe ==" -ForegroundColor Cyan
 Push-Location "$root\server"
