@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:video_player/video_player.dart';
 
+import 'albums_page.dart' show showAddToAlbumSheet;
 import 'api.dart';
 
 /// Browse everything stored on the server, month by month, and save
@@ -21,6 +22,7 @@ class _LibraryPageState extends State<LibraryPage> {
   String? _error;
   final Map<String, List<RemoteAsset>> _loaded = {};
   String _sort = 'date'; // date | size_desc | size_asc
+  bool _favorites = false;
   List<RemoteAsset> _sizeAssets = [];
   bool _sizeHasMore = true;
   bool _sizeLoading = false;
@@ -43,7 +45,8 @@ class _LibraryPageState extends State<LibraryPage> {
     });
     try {
       if (_sort == 'date') {
-        final buckets = await widget.api.buckets();
+        final buckets =
+            _favorites ? await widget.api.favoriteBuckets() : await widget.api.buckets();
         if (mounted) setState(() => _buckets = buckets);
       } else {
         await _loadMoreBySize();
@@ -57,7 +60,8 @@ class _LibraryPageState extends State<LibraryPage> {
     if (_sizeLoading || !_sizeHasMore) return;
     setState(() => _sizeLoading = true);
     try {
-      final page = await widget.api.listAssets(_sort, _sizeAssets.length, _pageSize);
+      final page = await widget.api
+          .listAssets(_sort, _sizeAssets.length, _pageSize, favorites: _favorites);
       if (mounted) {
         setState(() {
           _sizeAssets = [..._sizeAssets, ...page];
@@ -81,7 +85,9 @@ class _LibraryPageState extends State<LibraryPage> {
   Future<List<RemoteAsset>> _bucketAssets(String bucket) async {
     final cached = _loaded[bucket];
     if (cached != null) return cached;
-    final assets = await widget.api.bucketAssets(bucket);
+    final assets = _favorites
+        ? await widget.api.favoriteBucketAssets(bucket)
+        : await widget.api.bucketAssets(bucket);
     _loaded[bucket] = assets;
     return assets;
   }
@@ -109,18 +115,34 @@ class _LibraryPageState extends State<LibraryPage> {
       );
     }
     final sortBar = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-      child: SegmentedButton<String>(
-        segments: const [
-          ButtonSegment(value: 'date', label: Text('Date')),
-          ButtonSegment(value: 'size_desc', label: Text('Largest')),
-          ButtonSegment(value: 'size_asc', label: Text('Smallest')),
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: SegmentedButton<String>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: 'date', label: Text('Date')),
+                ButtonSegment(value: 'size_desc', label: Text('Largest')),
+                ButtonSegment(value: 'size_asc', label: Text('Smallest')),
+              ],
+              selected: {_sort},
+              onSelectionChanged: (sel) {
+                setState(() => _sort = sel.first);
+                _load();
+              },
+            ),
+          ),
+          IconButton(
+            tooltip: _favorites ? 'Showing favorites' : 'Favorites only',
+            icon: Icon(_favorites ? Icons.favorite : Icons.favorite_border,
+                color: _favorites ? Colors.redAccent : null),
+            onPressed: () {
+              setState(() => _favorites = !_favorites);
+              _load();
+            },
+          ),
         ],
-        selected: {_sort},
-        onSelectionChanged: (sel) {
-          setState(() => _sort = sel.first);
-          _load();
-        },
       ),
     );
 
@@ -318,6 +340,32 @@ class _AssetViewerState extends State<AssetViewer> {
   double _downloadPct = 0;
   VideoPlayerController? _video;
   bool _videoIsLive = false;
+  final Map<String, bool> _favOverride = {}; // favorite toggles made in this viewer
+
+  bool _isFav(RemoteAsset a) => _favOverride[a.id] ?? a.isFavorite;
+
+  Future<void> _toggleFavorite(RemoteAsset a) async {
+    try {
+      final v = await widget.api.setFavorite(a.id, !_isFav(a));
+      if (mounted) setState(() => _favOverride[a.id] = v);
+    } catch (e) {
+      _snack('Could not update favorite: $e');
+    }
+  }
+
+  Future<void> _trashCurrent(RemoteAsset a) async {
+    try {
+      await widget.api.trashAsset(a.id);
+      _snack('Moved to trash (restore from Settings > Trash)');
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      _snack('Trash failed: $e');
+    }
+  }
+
+  void _snack(String m) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
 
   @override
   void dispose() {
@@ -408,23 +456,33 @@ class _AssetViewerState extends State<AssetViewer> {
         title: Text('${_index + 1} / ${widget.assets.length}'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.visibility_off),
-            tooltip: 'Hide (accessible from Settings)',
-            onPressed: () async {
-              try {
-                await widget.api.hideAssets([asset.id]);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('Hidden - find it in Settings > Hidden photos')));
-                  Navigator.pop(context);
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(SnackBar(content: Text('Hide failed: $e')));
-                }
+            icon: Icon(_isFav(asset) ? Icons.favorite : Icons.favorite_border,
+                color: _isFav(asset) ? Colors.redAccent : null),
+            tooltip: 'Favorite',
+            onPressed: () => _toggleFavorite(asset),
+          ),
+          PopupMenuButton<String>(
+            onSelected: (v) async {
+              switch (v) {
+                case 'album':
+                  await showAddToAlbumSheet(context, widget.api, [asset.id]);
+                case 'hide':
+                  try {
+                    await widget.api.hideAssets([asset.id]);
+                    _snack('Hidden - find it in Settings > Hidden photos');
+                    if (context.mounted) Navigator.pop(context);
+                  } catch (e) {
+                    _snack('Hide failed: $e');
+                  }
+                case 'trash':
+                  await _trashCurrent(asset);
               }
             },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'album', child: ListTile(leading: Icon(Icons.photo_album_outlined), title: Text('Add to album'))),
+              PopupMenuItem(value: 'hide', child: ListTile(leading: Icon(Icons.visibility_off), title: Text('Hide'))),
+              PopupMenuItem(value: 'trash', child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Move to trash'))),
+            ],
           ),
           if (asset.hasLiveVideo)
             IconButton(

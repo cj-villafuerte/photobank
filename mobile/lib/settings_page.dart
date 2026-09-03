@@ -6,6 +6,7 @@ import 'background.dart' show backlogThreshold;
 import 'duplicates_page.dart';
 import 'library_page.dart';
 import 'notifications.dart';
+import 'trash_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final PhotobankApi api;
@@ -121,16 +122,41 @@ class _SettingsPageState extends State<SettingsPage> {
                 if (_retention)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Keep the last'),
-                        const SizedBox(width: 12),
-                        DropdownButton<int>(
-                          value: _months,
-                          items: const [1, 2, 3, 6, 12]
-                              .map((m) => DropdownMenuItem(value: m, child: Text('$m month${m == 1 ? '' : 's'}')))
+                        Row(
+                          children: [
+                            const Text('Keep the last'),
+                            const SizedBox(width: 12),
+                            SizedBox(
+                              width: 72,
+                              child: TextFormField(
+                                key: ValueKey(_months),
+                                initialValue: '$_months',
+                                keyboardType: TextInputType.number,
+                                textAlign: TextAlign.center,
+                                decoration: const InputDecoration(isDense: true),
+                                onFieldSubmitted: (v) {
+                                  final m = int.tryParse(v.trim());
+                                  if (m != null && m >= 1 && m <= 120) _setMonths(m);
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text('month${_months == 1 ? '' : 's'} on this phone'),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          children: [1, 2, 3, 6, 12, 24]
+                              .map((m) => ChoiceChip(
+                                    label: Text('$m'),
+                                    selected: _months == m,
+                                    onSelected: (_) => _setMonths(m),
+                                  ))
                               .toList(),
-                          onChanged: (m) => m == null ? null : _setMonths(m),
                         ),
                       ],
                     ),
@@ -150,15 +176,30 @@ class _SettingsPageState extends State<SettingsPage> {
           Text('Server storage', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 8),
           Card(
-            child: ListTile(
-              leading: const Icon(Icons.cleaning_services),
-              title: const Text('Find duplicate photos'),
-              subtitle: const Text('Visually similar copies on the server'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => DuplicatesPage(api: widget.api)),
-              ),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.cleaning_services),
+                  title: const Text('Find duplicate photos'),
+                  subtitle: const Text('Visually similar copies on the server'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => DuplicatesPage(api: widget.api)),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline),
+                  title: const Text('Trash'),
+                  subtitle: const Text('Restore or permanently delete'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => TrashPage(api: widget.api)),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 20),

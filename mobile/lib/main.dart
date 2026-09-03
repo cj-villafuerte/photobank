@@ -7,6 +7,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'api.dart';
 import 'background.dart';
+import 'albums_page.dart';
 import 'library_page.dart';
 import 'notifications.dart';
 import 'search_page.dart';
@@ -99,7 +100,17 @@ class _HomeShellState extends State<HomeShell> {
         children: [
           SyncPage(api: widget.api, onLogout: widget.onLogout),
           Scaffold(
-            appBar: AppBar(title: const Text('Library')),
+            appBar: AppBar(
+              title: const Text('Library'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.photo_album_outlined),
+                  tooltip: 'Albums',
+                  onPressed: () => Navigator.push(
+                      context, MaterialPageRoute(builder: (_) => AlbumsPage(api: widget.api))),
+                ),
+              ],
+            ),
             body: LibraryPage(api: widget.api),
           ),
           SearchPage(api: widget.api),

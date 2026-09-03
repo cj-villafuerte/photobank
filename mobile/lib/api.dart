@@ -105,6 +105,20 @@ class DuplicateGroup {
   const DuplicateGroup(this.assets, this.wastedBytes);
 }
 
+class Album {
+  final String id;
+  final String name;
+  final String? coverAssetId;
+  final int assetCount;
+  const Album(this.id, this.name, this.coverAssetId, this.assetCount);
+  factory Album.fromJson(Map<String, dynamic> j) => Album(
+        j['id'] as String,
+        j['name'] as String,
+        j['cover_asset_id'] as String?,
+        (j['asset_count'] as num?)?.toInt() ?? 0,
+      );
+}
+
 class ExistsDetail {
   final String assetId;
   final bool hasLiveVideo;
@@ -279,6 +293,106 @@ class PhotobankApi {
     if (res.statusCode != 204) throw ApiException(res.statusCode, _detail(res));
   }
 
+  Future<bool> setFavorite(String id, bool value) async {
+    final res = await http.patch(_u('/api/assets/$id'),
+        headers: _headers, body: jsonEncode({'is_favorite': value}));
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    return (jsonDecode(res.body) as Map<String, dynamic>)['is_favorite'] as bool;
+  }
+
+  Future<List<TimelineBucket>> favoriteBuckets() async {
+    final res = await http.get(_u('/api/timeline/buckets?favorites=true'), headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    return (jsonDecode(res.body) as List)
+        .map((b) => TimelineBucket(b['bucket'] as String, b['count'] as int))
+        .toList();
+  }
+
+  Future<List<RemoteAsset>> favoriteBucketAssets(String bucket) async {
+    final res =
+        await http.get(_u('/api/timeline/bucket/$bucket?favorites=true'), headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    return (jsonDecode(res.body) as List)
+        .map((j) => RemoteAsset.fromJson(j as Map<String, dynamic>))
+        .toList();
+  }
+
+  // ---- albums ----
+  Future<List<Album>> albums() async {
+    final res = await http.get(_u('/api/albums'), headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    return (jsonDecode(res.body) as List)
+        .map((a) => Album.fromJson(a as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<Album> createAlbum(String name) async {
+    final res = await http.post(_u('/api/albums'),
+        headers: _headers, body: jsonEncode({'name': name}));
+    if (res.statusCode != 201) throw ApiException(res.statusCode, _detail(res));
+    return Album.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  Future<(Album, List<RemoteAsset>)> album(String id) async {
+    final res = await http.get(_u('/api/albums/$id'), headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    final j = jsonDecode(res.body) as Map<String, dynamic>;
+    return (
+      Album.fromJson(j),
+      (j['assets'] as List).map((a) => RemoteAsset.fromJson(a as Map<String, dynamic>)).toList(),
+    );
+  }
+
+  Future<void> renameAlbum(String id, String name) async {
+    final res = await http.patch(_u('/api/albums/$id'),
+        headers: _headers, body: jsonEncode({'name': name}));
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+  }
+
+  Future<void> deleteAlbum(String id) async {
+    final res = await http.delete(_u('/api/albums/$id'), headers: _headers);
+    if (res.statusCode != 204) throw ApiException(res.statusCode, _detail(res));
+  }
+
+  Future<void> addToAlbum(String albumId, List<String> assetIds) async {
+    final res = await http.put(_u('/api/albums/$albumId/assets'),
+        headers: _headers, body: jsonEncode({'asset_ids': assetIds}));
+    if (res.statusCode != 204) throw ApiException(res.statusCode, _detail(res));
+  }
+
+  Future<void> removeFromAlbum(String albumId, List<String> assetIds) async {
+    final req = http.Request('DELETE', _u('/api/albums/$albumId/assets'))
+      ..headers.addAll(_headers)
+      ..body = jsonEncode({'asset_ids': assetIds});
+    final res = await http.Response.fromStream(await req.send());
+    if (res.statusCode != 204) throw ApiException(res.statusCode, _detail(res));
+  }
+
+  // ---- trash ----
+  Future<List<RemoteAsset>> trash() async {
+    final res = await http.get(_u('/api/trash'), headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    return (jsonDecode(res.body) as List)
+        .map((j) => RemoteAsset.fromJson(j as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> restoreFromTrash(List<String> ids) async {
+    final res = await http.post(_u('/api/trash/restore'),
+        headers: _headers, body: jsonEncode({'asset_ids': ids}));
+    if (res.statusCode != 204) throw ApiException(res.statusCode, _detail(res));
+  }
+
+  Future<void> permanentDelete(String id) async {
+    final res = await http.delete(_u('/api/assets/$id/permanent'), headers: _headers);
+    if (res.statusCode != 204) throw ApiException(res.statusCode, _detail(res));
+  }
+
+  Future<void> emptyTrash() async {
+    final res = await http.post(_u('/api/trash/empty'), headers: _headers);
+    if (res.statusCode != 204) throw ApiException(res.statusCode, _detail(res));
+  }
+
   Future<void> hideAssets(List<String> ids) async {
     final res = await http.post(_u('/api/assets/hide'),
         headers: _headers, body: jsonEncode({'asset_ids': ids}));
@@ -313,9 +427,10 @@ class PhotobankApi {
         .toList();
   }
 
-  Future<List<RemoteAsset>> listAssets(String sort, int offset, int limit) async {
+  Future<List<RemoteAsset>> listAssets(String sort, int offset, int limit,
+      {bool favorites = false}) async {
     final res = await http.get(
-        _u('/api/assets/list?sort=$sort&offset=$offset&limit=$limit'),
+        _u('/api/assets/list?sort=$sort&offset=$offset&limit=$limit&favorites=$favorites'),
         headers: _headers);
     if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
     return (jsonDecode(res.body) as List)
