@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
@@ -59,13 +60,25 @@ class _SettingsPageState extends State<SettingsPage> {
   int? _cacheBytes;
   int? _syncRecords;
 
+  Future<List<Directory>> _cacheDirs() async {
+    final dirs = <Directory>[await getTemporaryDirectory()];
+    try {
+      dirs.add(await getApplicationCacheDirectory()); // photo_manager's copies live here
+    } catch (_) {}
+    return dirs;
+  }
+
   Future<void> _measureAppData() async {
     try {
-      final dir = await getTemporaryDirectory();
       var total = 0;
-      if (dir.existsSync()) {
+      for (final dir in await _cacheDirs()) {
+        if (!dir.existsSync()) continue;
         await for (final f in dir.list(recursive: true, followLinks: false)) {
-          if (f is File) total += await f.length();
+          if (f is File) {
+            try {
+              total += await f.length();
+            } catch (_) {}
+          }
         }
       }
       final svc = SyncService(widget.api);
@@ -81,8 +94,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _clearCache() async {
     try {
-      final dir = await getTemporaryDirectory();
-      if (dir.existsSync()) {
+      try {
+        await PhotoManager.clearFileCache();
+      } catch (_) {}
+      for (final dir in await _cacheDirs()) {
+        if (!dir.existsSync()) continue;
         await for (final f in dir.list(followLinks: false)) {
           try {
             await f.delete(recursive: true);
@@ -472,7 +488,7 @@ class _HiddenPageState extends State<HiddenPage> {
                                   children: [
                                     Image.network(
                                       widget.api.thumbUrl(a.id),
-                                      headers: widget.api.authHeaders,
+                                      headers: widget.api.authHeaders, cacheWidth: 360,
                                       fit: BoxFit.cover,
                                       errorBuilder: (_, _, _) => Container(
                                           color: Colors.white10,

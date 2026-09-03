@@ -83,7 +83,7 @@ class _AlbumsPageState extends State<AlbumsPage> {
                                     child: al.coverAssetId == null
                                         ? const Center(child: Icon(Icons.photo_album_outlined, size: 40))
                                         : Image.network(widget.api.thumbUrl(al.coverAssetId!),
-                                            headers: widget.api.authHeaders, fit: BoxFit.cover),
+                                            headers: widget.api.authHeaders, cacheWidth: 360, fit: BoxFit.cover),
                                   ),
                                   Padding(
                                     padding: const EdgeInsets.all(10),
@@ -225,7 +225,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              Image.network(widget.api.thumbUrl(a.id), headers: widget.api.authHeaders, fit: BoxFit.cover),
+                              Image.network(widget.api.thumbUrl(a.id), headers: widget.api.authHeaders, cacheWidth: 360, fit: BoxFit.cover),
                               if (isSel)
                                 Container(
                                   decoration: BoxDecoration(

@@ -118,7 +118,7 @@ class _TrashPageState extends State<TrashPage> {
                                 child: Stack(
                                   fit: StackFit.expand,
                                   children: [
-                                    Image.network(widget.api.thumbUrl(a.id), headers: widget.api.authHeaders, fit: BoxFit.cover),
+                                    Image.network(widget.api.thumbUrl(a.id), headers: widget.api.authHeaders, cacheWidth: 360, fit: BoxFit.cover),
                                     if (isSel)
                                       Container(
                                         decoration: BoxDecoration(

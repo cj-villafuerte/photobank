@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
 import 'albums_page.dart' show showAddToAlbumSheet;
@@ -26,13 +27,38 @@ class _LibraryPageState extends State<LibraryPage> {
   List<RemoteAsset> _sizeAssets = [];
   bool _sizeHasMore = true;
   bool _sizeLoading = false;
+  Set<String> _collapsed = {}; // month buckets folded up in the date view
 
   static const _pageSize = 200;
 
   @override
   void initState() {
     super.initState();
+    SharedPreferences.getInstance().then((p) {
+      if (mounted) {
+        setState(() => _collapsed = (p.getStringList('collapsed_months') ?? []).toSet());
+      }
+    });
     _load();
+  }
+
+  Future<void> _saveCollapsed() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setStringList('collapsed_months', _collapsed.toList());
+  }
+
+  void _toggleCollapsed(String bucket) {
+    setState(() {
+      if (!_collapsed.remove(bucket)) _collapsed.add(bucket);
+    });
+    _saveCollapsed();
+  }
+
+  void _setAllCollapsed(bool collapsed) {
+    setState(() {
+      _collapsed = collapsed ? (_buckets ?? []).map((b) => b.bucket).toSet() : {};
+    });
+    _saveCollapsed();
   }
 
   Future<void> _load() async {
@@ -133,6 +159,12 @@ class _LibraryPageState extends State<LibraryPage> {
               },
             ),
           ),
+          if (_sort == 'date')
+            IconButton(
+              tooltip: _collapsed.isEmpty ? 'Collapse all months' : 'Expand all months',
+              icon: Icon(_collapsed.isEmpty ? Icons.unfold_less : Icons.unfold_more),
+              onPressed: () => _setAllCollapsed(_collapsed.isEmpty),
+            ),
           IconButton(
             tooltip: _favorites ? 'Showing favorites' : 'Favorites only',
             icon: Icon(_favorites ? Icons.favorite : Icons.favorite_border,
@@ -180,7 +212,7 @@ class _LibraryPageState extends State<LibraryPage> {
                             children: [
                               Image.network(
                                 widget.api.thumbUrl(a.id),
-                                headers: widget.api.authHeaders,
+                                headers: widget.api.authHeaders, cacheWidth: 360,
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, _, _) => Container(
                                     color: Colors.white10,
@@ -231,6 +263,8 @@ class _LibraryPageState extends State<LibraryPage> {
                 bucket: buckets[i - 1],
                 label: _monthLabel(buckets[i - 1].bucket),
                 loader: _bucketAssets,
+                collapsed: _collapsed.contains(buckets[i - 1].bucket),
+                onToggle: () => _toggleCollapsed(buckets[i - 1].bucket),
               ),
       ),
     );
@@ -242,18 +276,40 @@ class _BucketSection extends StatelessWidget {
   final TimelineBucket bucket;
   final String label;
   final Future<List<RemoteAsset>> Function(String) loader;
-  const _BucketSection({required this.api, required this.bucket, required this.label, required this.loader});
+  final bool collapsed;
+  final VoidCallback onToggle;
+  const _BucketSection({
+    required this.api,
+    required this.bucket,
+    required this.label,
+    required this.loader,
+    required this.collapsed,
+    required this.onToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final header = InkWell(
+      onTap: onToggle,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text('$label  ·  ${bucket.count}',
+                  style: Theme.of(context).textTheme.titleMedium),
+            ),
+            Icon(collapsed ? Icons.expand_more : Icons.expand_less,
+                color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+    if (collapsed) return header; // no fetch, no thumbnails for folded months
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
-          child: Text('$label  ·  ${bucket.count}',
-              style: Theme.of(context).textTheme.titleMedium),
-        ),
+        header,
         FutureBuilder<List<RemoteAsset>>(
           future: loader(bucket.bucket),
           builder: (context, snap) {
@@ -291,7 +347,7 @@ class _BucketSection extends StatelessWidget {
                     children: [
                       Image.network(
                         api.thumbUrl(a.id),
-                        headers: api.authHeaders,
+                        headers: api.authHeaders, cacheWidth: 360,
                         fit: BoxFit.cover,
                         errorBuilder: (_, _, _) =>
                             Container(color: Colors.white10, child: const Icon(Icons.broken_image, size: 18)),

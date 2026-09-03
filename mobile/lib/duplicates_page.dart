@@ -136,7 +136,7 @@ class _DuplicatesPageState extends State<DuplicatesPage> {
                                                     ClipRRect(
                                                       borderRadius: BorderRadius.circular(4),
                                                       child: Image.network(widget.api.thumbUrl(a.id),
-                                                          headers: widget.api.authHeaders,
+                                                          headers: widget.api.authHeaders, cacheWidth: 360,
                                                           fit: BoxFit.cover),
                                                     ),
                                                     if (isSel)

@@ -135,6 +135,7 @@ class SyncService {
     bool oldestFirst = false,
   }) async* {
     cancelRequested = false;
+    await _purgePluginCache(); // stale copies from an interrupted earlier run
     final assets = await _allAssets();
     final todo = assets.where((a) => !_synced.containsKey(a.id)).toList()
       ..sort((a, b) => oldestFirst
@@ -177,6 +178,7 @@ class SyncService {
               if (live != null && live.path != file.path) {
                 await api.uploadLiveVideo(serverId, live);
                 _liveDone.add(asset.id);
+                _discardCopy(live);
               }
             } catch (_) {
               // still is safely uploaded; live half can retry next sync
@@ -186,6 +188,7 @@ class SyncService {
           }
           _synced[asset.id] = checksum;
           await _save();
+          _discardCopy(file); // the plugin's cached copy of the original is no longer needed
         }
       } on ApiException catch (e) {
         if (e.status == 401) rethrow; // session died - surface to UI for re-login
@@ -201,6 +204,26 @@ class SyncService {
     if (!cancelRequested) {
       yield* syncLiveVideos();
     }
+    await _purgePluginCache();
+  }
+
+  /// photo_manager materializes originals into the app cache; on iOS that copy
+  /// would otherwise stay forever (gigabytes after a big sync). Deleting the
+  /// file only touches the cache copy, never the photo in the library.
+  static void _discardCopy(File? f) {
+    if (f == null) return;
+    try {
+      final p = f.path.replaceAll('\\', '/');
+      if (p.contains('/Caches/') || p.contains('/tmp/') || p.contains('/cache/')) {
+        f.deleteSync();
+      }
+    } catch (_) {}
+  }
+
+  static Future<void> _purgePluginCache() async {
+    try {
+      await PhotoManager.clearFileCache();
+    } catch (_) {}
   }
 
   /// Uploads missing Live Photo video halves for already-synced stills.
@@ -245,6 +268,8 @@ class SyncService {
           uploaded++;
         }
         _liveDone.add(entry.value.id);
+        _discardCopy(still);
+        _discardCopy(live);
       } on ApiException catch (e) {
         if (e.status == 401) rethrow;
         failed++;

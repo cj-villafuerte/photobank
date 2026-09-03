@@ -122,7 +122,7 @@ class _SearchPageState extends State<SearchPage> {
                                   fit: StackFit.expand,
                                   children: [
                                     Image.network(widget.api.thumbUrl(r.asset.id),
-                                        headers: widget.api.authHeaders, fit: BoxFit.cover),
+                                        headers: widget.api.authHeaders, cacheWidth: 360, fit: BoxFit.cover),
                                     Positioned(
                                       right: 4, top: 4,
                                       child: Container(

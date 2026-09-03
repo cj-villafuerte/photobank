@@ -18,6 +18,9 @@ import 'theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // decoded thumbnails live in RAM only; keep that bounded on a phone
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 64 << 20;
+  PaintingBinding.instance.imageCache.maximumSize = 600;
   runApp(const PhotobankApp());
   initNotifications();
   initBackgroundBackup();
