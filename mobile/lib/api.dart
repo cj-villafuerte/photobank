@@ -56,8 +56,10 @@ class RemoteAsset {
   final double? durationSec;
   final bool hasLiveVideo;
   final int fileSize;
+  final int? width;
+  final int? height;
   const RemoteAsset(this.id, this.assetType, this.takenAt, this.isFavorite, this.durationSec,
-      this.hasLiveVideo, this.fileSize);
+      this.hasLiveVideo, this.fileSize, [this.width, this.height]);
 
   factory RemoteAsset.fromJson(Map<String, dynamic> j) => RemoteAsset(
         j['id'] as String,
@@ -67,7 +69,40 @@ class RemoteAsset {
         (j['duration_sec'] as num?)?.toDouble(),
         j['has_live_video'] as bool? ?? false,
         (j['file_size'] as num?)?.toInt() ?? 0,
+        (j['width'] as num?)?.toInt(),
+        (j['height'] as num?)?.toInt(),
       );
+}
+
+class TextMatch {
+  final String word;
+  final double x, y, w, h;
+  const TextMatch(this.word, this.x, this.y, this.w, this.h);
+}
+
+class TextSearchResult {
+  final RemoteAsset asset;
+  final List<TextMatch> matches;
+  const TextSearchResult(this.asset, this.matches);
+}
+
+class DailyStat {
+  final String date;
+  final int count;
+  final int bytes;
+  const DailyStat(this.date, this.count, this.bytes);
+}
+
+class Stats {
+  final int totalCount, totalBytes, imageCount, videoCount;
+  final List<DailyStat> daily;
+  const Stats(this.totalCount, this.totalBytes, this.imageCount, this.videoCount, this.daily);
+}
+
+class DuplicateGroup {
+  final List<RemoteAsset> assets;
+  final int wastedBytes;
+  const DuplicateGroup(this.assets, this.wastedBytes);
 }
 
 class ExistsDetail {
@@ -195,6 +230,54 @@ class PhotobankApi {
 
   String liveVideoUrl(String id) => '$baseUrl/api/assets/$id/live-video';
   String originalUrl(String id) => '$baseUrl/api/assets/$id/original';
+
+  Future<List<TextSearchResult>> searchText(String q) async {
+    final res = await http.get(
+        _u('/api/search/text?q=${Uri.encodeQueryComponent(q)}'), headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    return (jsonDecode(res.body) as List).map((r) {
+      final m = r as Map<String, dynamic>;
+      return TextSearchResult(
+        RemoteAsset.fromJson(m['asset'] as Map<String, dynamic>),
+        (m['matches'] as List)
+            .map((t) => TextMatch(t['word'] as String, (t['x'] as num).toDouble(),
+                (t['y'] as num).toDouble(), (t['w'] as num).toDouble(), (t['h'] as num).toDouble()))
+            .toList(),
+      );
+    }).toList();
+  }
+
+  Future<Stats> stats(int days) async {
+    final res = await http.get(_u('/api/stats?days=$days'), headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    final j = jsonDecode(res.body) as Map<String, dynamic>;
+    return Stats(
+      j['total_count'] as int,
+      (j['total_bytes'] as num).toInt(),
+      j['image_count'] as int,
+      j['video_count'] as int,
+      (j['daily'] as List)
+          .map((d) => DailyStat(d['date'] as String, d['count'] as int, (d['bytes'] as num).toInt()))
+          .toList(),
+    );
+  }
+
+  Future<List<DuplicateGroup>> duplicates() async {
+    final res = await http.get(_u('/api/duplicates'), headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    return (jsonDecode(res.body) as List).map((g) {
+      final m = g as Map<String, dynamic>;
+      return DuplicateGroup(
+        (m['assets'] as List).map((a) => RemoteAsset.fromJson(a as Map<String, dynamic>)).toList(),
+        (m['wasted_bytes'] as num).toInt(),
+      );
+    }).toList();
+  }
+
+  Future<void> trashAsset(String id) async {
+    final res = await http.delete(_u('/api/assets/$id'), headers: _headers);
+    if (res.statusCode != 204) throw ApiException(res.statusCode, _detail(res));
+  }
 
   Future<void> hideAssets(List<String> ids) async {
     final res = await http.post(_u('/api/assets/hide'),

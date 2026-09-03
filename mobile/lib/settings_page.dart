@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 import 'background.dart' show backlogThreshold;
+import 'duplicates_page.dart';
 import 'library_page.dart';
 import 'notifications.dart';
 
@@ -143,6 +144,21 @@ class _SettingsPageState extends State<SettingsPage> {
                   onChanged: _setNotify,
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text('Server storage', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.cleaning_services),
+              title: const Text('Find duplicate photos'),
+              subtitle: const Text('Visually similar copies on the server'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => DuplicatesPage(api: widget.api)),
+              ),
             ),
           ),
           const SizedBox(height: 20),

@@ -9,7 +9,9 @@ import 'api.dart';
 import 'background.dart';
 import 'library_page.dart';
 import 'notifications.dart';
+import 'search_page.dart';
 import 'settings_page.dart';
+import 'stats_page.dart';
 import 'sync_service.dart';
 import 'theme.dart';
 
@@ -100,15 +102,20 @@ class _HomeShellState extends State<HomeShell> {
             appBar: AppBar(title: const Text('Library')),
             body: LibraryPage(api: widget.api),
           ),
+          SearchPage(api: widget.api),
+          StatsPage(api: widget.api),
           SettingsPage(api: widget.api, onLogout: widget.onLogout),
         ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         onDestinationSelected: (i) => setState(() => _tab = i),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.cloud_upload_outlined), selectedIcon: Icon(Icons.cloud_upload), label: 'Backup'),
           NavigationDestination(icon: Icon(Icons.photo_library_outlined), selectedIcon: Icon(Icons.photo_library), label: 'Library'),
+          NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
+          NavigationDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: 'Stats'),
           NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
         ],
       ),
