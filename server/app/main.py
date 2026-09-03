@@ -1,4 +1,5 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -16,7 +17,10 @@ from .routers import admin, albums, assets, auth
 
 logging.basicConfig(level=logging.INFO)
 
-WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
+if getattr(sys, "frozen", False):  # PyInstaller bundle carries the built web app
+    WEB_DIST = Path(sys._MEIPASS) / "web_dist"  # type: ignore[attr-defined]
+else:
+    WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 
 
 @asynccontextmanager
