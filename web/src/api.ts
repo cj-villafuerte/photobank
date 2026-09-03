@@ -117,11 +117,10 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    credentials: "include",
-    headers: init?.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
-    ...init,
-  });
+  const headers: Record<string, string> =
+    init?.body instanceof FormData ? {} : { "Content-Type": "application/json" };
+  Object.assign(headers, (init?.headers as Record<string, string> | undefined) ?? {});
+  const res = await fetch(path, { credentials: "include", ...init, headers });
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -147,6 +146,12 @@ export const api = {
       body: JSON.stringify({ email, password, display_name }),
     }),
   logout: () => request<void>("/api/auth/logout", { method: "POST" }),
+  /** Desktop window only: sign in as the passwordless local administrator. */
+  localLogin: (token: string) =>
+    request<User>("/api/auth/local", { method: "POST", headers: { "X-Local-Admin": token, "Content-Type": "application/json" } }),
+  flags: () => request<Record<string, string>>("/api/admin/flags"),
+  setFlag: (key: string, value: string) =>
+    request<void>("/api/admin/flags", { method: "PUT", body: JSON.stringify({ key, value }) }),
 
   // timeline
   buckets: (favorites = false) =>

@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     port: int = 8000
     allow_registration: bool = True
     session_days: int = 14
+    # desktop app only: secret that lets the app's own window sign in as the
+    # passwordless local administrator (loopback requests only)
+    local_admin_token: str | None = None
 
     @property
     def library_dir(self) -> Path:

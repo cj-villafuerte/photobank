@@ -23,11 +23,37 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password_hash: str, password: str) -> bool:
+    if password_hash == UNUSABLE_PASSWORD:
+        return False  # local administrator: no password can ever match
     try:
         _hasher.verify(password_hash, password)
         return True
-    except VerifyMismatchError:
+    except (VerifyMismatchError, Exception):
         return False
+
+
+LOCAL_ADMIN_EMAIL = "admin@photobank.local"
+UNUSABLE_PASSWORD = "!"
+
+
+async def ensure_local_admin(db: AsyncSession) -> User:
+    """The host computer's user is the administrator; no password exists for it."""
+    user = await db.scalar(select(User).where(User.email == LOCAL_ADMIN_EMAIL))
+    if user is None:
+        user = User(
+            email=LOCAL_ADMIN_EMAIL,
+            display_name="Administrator (this computer)",
+            password_hash=UNUSABLE_PASSWORD,
+            is_admin=True,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    return user
+
+
+def is_loopback(request: Request) -> bool:
+    return request.client is not None and request.client.host in ("127.0.0.1", "::1")
 
 
 def set_session_cookie(response: Response, user_id: uuid.UUID) -> None:

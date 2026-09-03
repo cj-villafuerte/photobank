@@ -2,10 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fastapi import Request
+
 from ..auth import (
     clear_session_cookie,
+    ensure_local_admin,
     get_current_user,
     hash_password,
+    is_loopback,
     make_token,
     set_session_cookie,
     verify_password,
@@ -47,6 +51,18 @@ async def login(body: LoginIn, response: Response, db: AsyncSession = Depends(ge
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is disabled")
+    set_session_cookie(response, user.id)
+    return user
+
+
+@router.post("/local", response_model=UserOut)
+async def local_admin_login(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    """Desktop app window -> passwordless administrator. Requires the secret the
+    desktop app generated AND a loopback client; unavailable on plain servers."""
+    token = settings.local_admin_token
+    if not token or request.headers.get("x-local-admin") != token or not is_loopback(request):
+        raise HTTPException(status_code=404, detail="Not available")
+    user = await ensure_local_admin(db)
     set_session_cookie(response, user.id)
     return user
 

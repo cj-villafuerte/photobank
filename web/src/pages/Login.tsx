@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
+import { isDesktop, localAdminLogin } from "../App";
 
 export default function Login() {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -36,11 +37,25 @@ export default function Login() {
         <div className="mono" style={{ color: "var(--faint)", fontSize: 10, textAlign: "center", marginTop: -4 }}>
           by Neodata
         </div>
-        {typeof window !== "undefined" && window.pywebview && (
-          <p className="muted" style={{ fontSize: "0.85rem", textAlign: "center", margin: "4px 0 8px" }}>
-            This computer hosts the library. Sign in with the administrator account to manage
-            it — accounts, backups, storage — or with a member account to browse.
-          </p>
+        {isDesktop() && (
+          <>
+            <p className="muted" style={{ fontSize: "0.85rem", textAlign: "center", margin: "4px 0 8px" }}>
+              Sign in as a member to view that person's photos. The administrator needs no
+              password — this computer is the administrator.
+            </p>
+            <button
+              type="button"
+              className="primary"
+              onClick={async () => {
+                if (await localAdminLogin()) {
+                  await qc.invalidateQueries({ queryKey: ["me"] });
+                  navigate("/console");
+                }
+              }}
+            >
+              Open the administrator console
+            </button>
+          </>
         )}
         {mode === "register" && (
           <input

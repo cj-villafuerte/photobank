@@ -46,6 +46,9 @@ def load_or_create_config() -> dict:
     if "port" not in cfg:
         cfg["port"] = 8000
         changed = True
+    if "local_admin_token" not in cfg:
+        cfg["local_admin_token"] = secrets.token_hex(24)
+        changed = True
     if changed:
         CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     return cfg
@@ -143,6 +146,7 @@ def main() -> None:
     os.environ["SECRET_KEY"] = cfg["secret_key"]
     os.environ["PORT"] = str(port)
     os.environ["HOST"] = "0.0.0.0"
+    os.environ["LOCAL_ADMIN_TOKEN"] = cfg["local_admin_token"]
 
     import uvicorn
     from fastapi import HTTPException, Request
@@ -191,13 +195,32 @@ def main() -> None:
         import webview
 
         class DesktopApi:
-            """Exposed to the web UI as window.pywebview.api (native dialogs)."""
+            """Exposed to the web UI as window.pywebview.api (native dialogs, local auth)."""
 
             def pick_folder(self):
                 result = window.create_file_dialog(webview.FOLDER_DIALOG)
                 if result:
                     return result[0] if isinstance(result, (list, tuple)) else result
                 return None
+
+            def local_token(self):
+                # only code running inside this window can obtain it
+                return cfg["local_admin_token"]
+
+            def set_storage_root(self, path):
+                """First-run setup: move the photo folder. Applies live and persists."""
+                from pathlib import Path as _P
+
+                from app import storage
+                from app.config import settings as _s
+
+                p = _P(path)
+                p.mkdir(parents=True, exist_ok=True)
+                _s.storage_root = p
+                storage.ensure_dirs()
+                cfg["storage_root"] = str(p)
+                CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+                return str(p)
 
         window = webview.create_window(
             "Photobank", url, width=1280, height=850, min_size=(700, 500),

@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, User } from "./api";
@@ -16,6 +16,34 @@ import Console from "./pages/Console";
 
 /** Running inside the desktop app's window (pywebview injects this). */
 export const isDesktop = () => typeof window !== "undefined" && !!window.pywebview;
+
+declare global {
+  interface Window {
+    pywebview?: {
+      api?: {
+        pick_folder?: () => Promise<string | null>;
+        local_token?: () => Promise<string>;
+        set_storage_root?: (path: string) => Promise<string>;
+      };
+    };
+  }
+}
+
+/** Desktop window: become the passwordless local administrator (loopback + secret). */
+export async function localAdminLogin(): Promise<boolean> {
+  try {
+    // pywebview injects its bridge shortly after load; wait briefly for it
+    for (let i = 0; i < 20 && !window.pywebview?.api?.local_token; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const token = await window.pywebview?.api?.local_token?.();
+    if (!token) return false;
+    await api.localLogin(token);
+    return true;
+  } catch {
+    return false;
+  }
+}
 import { ToastProvider } from "./components/Toast";
 
 const UserContext = createContext<User | null>(null);
@@ -57,9 +85,19 @@ function NavBar({ user }: { user: User }) {
       </NavLink>
       <span className="spacer" />
       <NavLink to="/settings" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
-        ⚙ {user.display_name}
+        {user.display_name}
       </NavLink>
-      <button onClick={logout}>Log out</button>
+      {isDesktop() && user.is_admin ? (
+        <button onClick={() => { api.logout().then(() => { qc.clear(); navigate("/login"); }); }}>
+          View as member…
+        </button>
+      ) : isDesktop() ? (
+        <button onClick={async () => { if (await localAdminLogin()) { qc.clear(); navigate("/console"); } }}>
+          Administrator console
+        </button>
+      ) : (
+        <button onClick={logout}>Log out</button>
+      )}
     </nav>
   );
 }
@@ -71,7 +109,19 @@ export default function App() {
     retry: (count, err) => !(err instanceof ApiError && err.status === 401) && count < 2,
   });
 
-  if (isLoading) {
+  // desktop window with no session: sign in as the local administrator automatically
+  const qcBoot = useQueryClient();
+  const [autoTried, setAutoTried] = useState(false);
+  useEffect(() => {
+    if (!isLoading && !user && isDesktop() && !autoTried) {
+      setAutoTried(true);
+      localAdminLogin().then((ok) => {
+        if (ok) qcBoot.invalidateQueries({ queryKey: ["me"] });
+      });
+    }
+  }, [isLoading, user, autoTried, qcBoot]);
+
+  if (isLoading || (!user && isDesktop() && !autoTried)) {
     return <div className="auth-wrap muted">Loading…</div>;
   }
 

@@ -10,6 +10,7 @@ import 'background.dart';
 import 'albums_page.dart';
 import 'library_page.dart';
 import 'notifications.dart';
+import 'onboarding_page.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
 import 'stats_page.dart';
@@ -94,6 +95,17 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _tab = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // first sign-in on this phone: show the tour once
+    OnboardingPage.isDone().then((done) {
+      if (!done && mounted) {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const OnboardingPage(), fullscreenDialog: true));
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -12,6 +12,7 @@ import 'background.dart' show backlogThreshold;
 import 'duplicates_page.dart';
 import 'library_page.dart';
 import 'notifications.dart';
+import 'onboarding_page.dart';
 import 'trash_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -361,10 +362,22 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 20),
           Card(
-            child: ListTile(
-              leading: const Icon(Icons.logout),
-              title: const Text('Log out'),
-              onTap: () => widget.onLogout(),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.school_outlined),
+                  title: const Text('Show the tour again'),
+                  subtitle: const Text('The five-step introduction'),
+                  onTap: () => Navigator.push(
+                      context, MaterialPageRoute(builder: (_) => const OnboardingPage(), fullscreenDialog: true)),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.logout),
+                  title: const Text('Log out'),
+                  onTap: () => widget.onLogout(),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 120),

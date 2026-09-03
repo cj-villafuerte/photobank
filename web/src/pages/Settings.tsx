@@ -6,12 +6,6 @@ import { useUser } from "../App";
 import { fmtBytes } from "../components/PhotoGrid";
 import { useToast } from "../components/Toast";
 
-declare global {
-  interface Window {
-    pywebview?: { api?: { pick_folder?: () => Promise<string | null> } };
-  }
-}
-
 /** Admin-only: mirror the media library to a folder of the user's choosing. */
 export function RedundancyBackup() {
   const toast = useToast();

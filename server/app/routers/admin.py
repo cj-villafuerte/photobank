@@ -1,12 +1,13 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_admin_user, hash_password
 from ..db import get_db
-from ..models import User
+from ..models import AppSetting, User
 from ..schemas import AdminUserCreate, AdminUserPatch, UserOut
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -55,6 +56,28 @@ async def server_info(_: User = Depends(get_admin_user), db: AsyncSession = Depe
         "ocr_pending": totals[3],
         "users": users,
     }
+
+
+class FlagIn(BaseModel):
+    key: str = Field(pattern=r"^[a-z_]{1,40}$")
+    value: str = Field(max_length=200)
+
+
+@router.get("/flags")
+async def get_flags(_: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    """Small key/value store for UI state such as 'setup_done'."""
+    rows = (await db.scalars(select(AppSetting).where(AppSetting.key.like("flag_%")))).all()
+    return {r.key[5:]: r.value for r in rows}
+
+
+@router.put("/flags", status_code=204)
+async def set_flag(body: FlagIn, _: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    row = await db.get(AppSetting, f"flag_{body.key}")
+    if row is None:
+        db.add(AppSetting(key=f"flag_{body.key}", value=body.value))
+    else:
+        row.value = body.value
+    await db.commit()
 
 
 @router.get("/users", response_model=list[UserOut])
