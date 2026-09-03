@@ -12,6 +12,51 @@ from ..schemas import AdminUserCreate, AdminUserPatch, UserOut
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
+@router.get("/server")
+async def server_info(_: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    """What an administrator wants to see first: where the server is and what it holds."""
+    import platform
+    import socket
+
+    from sqlalchemy import func
+
+    from .. import discovery
+    from ..config import settings
+    from ..models import Asset
+
+    totals = (
+        await db.execute(
+            select(
+                func.count(),
+                func.coalesce(func.sum(Asset.file_size), 0),
+                func.count().filter(Asset.thumb_status == "pending"),
+                func.count().filter(Asset.ocr_status == "pending"),
+            ).where(Asset.trashed_at.is_(None))
+        )
+    ).one()
+    users = await db.scalar(select(func.count(User.id)))
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        lan_ip = s.getsockname()[0]
+        s.close()
+    except OSError:
+        lan_ip = "127.0.0.1"
+    return {
+        "hostname": socket.gethostname().split(".")[0],
+        "platform": f"{platform.system()} {platform.release()}",
+        "lan_url": f"http://{lan_ip}:{settings.port}",
+        "storage_root": str(settings.storage_root),
+        "database": "SQLite" if settings.database_url.startswith("sqlite") else "PostgreSQL",
+        "mdns": discovery.status,
+        "assets": totals[0],
+        "bytes": totals[1],
+        "thumbs_pending": totals[2],
+        "ocr_pending": totals[3],
+        "users": users,
+    }
+
+
 @router.get("/users", response_model=list[UserOut])
 async def list_users(_: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     users = await db.scalars(select(User).order_by(User.created_at))

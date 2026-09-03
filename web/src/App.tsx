@@ -7,12 +7,15 @@ import Timeline from "./pages/Timeline";
 import Albums from "./pages/Albums";
 import AlbumDetail from "./pages/AlbumDetail";
 import Trash from "./pages/Trash";
-import Admin from "./pages/Admin";
 import Settings from "./pages/Settings";
 import Hidden from "./pages/Hidden";
 import Search from "./pages/Search";
 import Stats from "./pages/Stats";
 import Duplicates from "./pages/Duplicates";
+import Console from "./pages/Console";
+
+/** Running inside the desktop app's window (pywebview injects this). */
+export const isDesktop = () => typeof window !== "undefined" && !!window.pywebview;
 import { ToastProvider } from "./components/Toast";
 
 const UserContext = createContext<User | null>(null);
@@ -29,8 +32,13 @@ function NavBar({ user }: { user: User }) {
   return (
     <nav className="nav">
       <span className="brand">Photobank<small>by Neodata</small></span>
-      <NavLink to="/" end className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
-        Timeline
+      {user.is_admin && (
+        <NavLink to="/console" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
+          Console
+        </NavLink>
+      )}
+      <NavLink to="/library" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
+        Library
       </NavLink>
       <NavLink to="/favorites" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
         Favorites
@@ -47,11 +55,6 @@ function NavBar({ user }: { user: User }) {
       <NavLink to="/trash" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
         Trash
       </NavLink>
-      {user.is_admin && (
-        <NavLink to="/admin" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
-          Admin
-        </NavLink>
-      )}
       <span className="spacer" />
       <NavLink to="/settings" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
         ⚙ {user.display_name}
@@ -88,7 +91,13 @@ export default function App() {
       <ToastProvider>
         <NavBar user={user} />
         <Routes>
-          <Route path="/" element={<Timeline favorites={false} />} />
+          {/* admins on the desktop app land on the Console; everyone else on the library */}
+          <Route
+            path="/"
+            element={user.is_admin && isDesktop() ? <Navigate to="/console" replace /> : <Timeline favorites={false} />}
+          />
+          <Route path="/library" element={<Timeline favorites={false} />} />
+          {user.is_admin && <Route path="/console" element={<Console />} />}
           <Route path="/favorites" element={<Timeline favorites={true} />} />
           <Route path="/albums" element={<Albums />} />
           <Route path="/albums/:id" element={<AlbumDetail />} />
@@ -98,7 +107,7 @@ export default function App() {
           <Route path="/duplicates" element={<Duplicates />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/settings/hidden" element={<Hidden />} />
-          {user.is_admin && <Route path="/admin" element={<Admin />} />}
+          {user.is_admin && <Route path="/admin" element={<Navigate to="/console" replace />} />}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </ToastProvider>

@@ -13,7 +13,7 @@ declare global {
 }
 
 /** Admin-only: mirror the media library to a folder of the user's choosing. */
-function RedundancyBackup() {
+export function RedundancyBackup() {
   const toast = useToast();
   const qc = useQueryClient();
   const { data } = useQuery({

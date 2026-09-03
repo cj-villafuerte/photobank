@@ -36,6 +36,12 @@ export default function Login() {
         <div className="mono" style={{ color: "var(--faint)", fontSize: 10, textAlign: "center", marginTop: -4 }}>
           by Neodata
         </div>
+        {typeof window !== "undefined" && window.pywebview && (
+          <p className="muted" style={{ fontSize: "0.85rem", textAlign: "center", margin: "4px 0 8px" }}>
+            This computer hosts the library. Sign in with the administrator account to manage
+            it — accounts, backups, storage — or with a member account to browse.
+          </p>
+        )}
         {mode === "register" && (
           <input
             placeholder="Display name"

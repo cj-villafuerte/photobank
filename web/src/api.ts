@@ -229,6 +229,20 @@ export const api = {
   },
 
   // admin
+  serverInfo: () =>
+    request<{
+      hostname: string;
+      platform: string;
+      lan_url: string;
+      storage_root: string;
+      database: string;
+      mdns: { state: string; error?: string; instance?: string };
+      assets: number;
+      bytes: number;
+      thumbs_pending: number;
+      ocr_pending: number;
+      users: number;
+    }>("/api/admin/server"),
   users: () => request<User[]>("/api/admin/users"),
   createUser: (email: string, password: string, display_name: string, is_admin: boolean) =>
     request<User>("/api/admin/users", {

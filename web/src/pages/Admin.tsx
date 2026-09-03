@@ -4,7 +4,8 @@ import { api, ApiError } from "../api";
 import { useUser } from "../App";
 import { useToast } from "../components/Toast";
 
-export default function Admin() {
+/** User management table + create form; embedded in the Console. */
+export function UsersPanel() {
   const me = useUser();
   const qc = useQueryClient();
   const toast = useToast();
@@ -48,9 +49,7 @@ export default function Admin() {
   };
 
   return (
-    <div className="page">
-      <h1>Users</h1>
-
+    <div>
       <form className="row" style={{ marginBottom: 20 }} onSubmit={create}>
         <input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         <input placeholder="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
