@@ -24,7 +24,8 @@ CONFIG_FILE = APP_DIR / "config.json"
 def load_or_create_config() -> dict:
     APP_DIR.mkdir(parents=True, exist_ok=True)
     if CONFIG_FILE.is_file():
-        cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        # utf-8-sig tolerates a BOM if the file was edited by a Windows tool
+        cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
     else:
         cfg = {}
     changed = False
