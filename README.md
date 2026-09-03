@@ -1,7 +1,31 @@
 # Photobank
 
-Self-hosted, Immich-like photo & video library for Windows. FastAPI + PostgreSQL on the server,
-a React web app for browsing — usable from any phone/laptop on your home network.
+**Your photos, on your computer, backed up from your phone — no cloud, no Docker, no setup.**
+
+Photobank is a self-hosted photo & video library in the spirit of Immich, built for people
+who want to double-click an app instead of running containers. A desktop app (Windows / macOS)
+runs the server; the web UI works from any device on your network; the iPhone app finds the
+server automatically, backs up your camera roll, and can free space on the phone safely.
+
+## Download
+
+Grab the latest build from **[Releases](https://github.com/cj-villafuerte/photobank/releases)**:
+
+| Platform | File | Notes |
+|---|---|---|
+| Windows 10/11 | `Photobank-Windows.zip` | unzip, run `Photobank.exe` (SmartScreen: More info → Run anyway) |
+| macOS 13+ | `Photobank-macOS.zip` | unzip, drag to Applications, right-click → Open the first time |
+| iPhone | `Photobank-iOS-unsigned.ipa` | sideload with [Sideloadly](https://sideloadly.io) until the App Store release |
+
+Optional helpers for video thumbnails and text search: `winget install Gyan.FFmpeg` +
+`winget install UB-Mannheim.TesseractOCR` (Windows) or `brew install ffmpeg tesseract` (macOS).
+
+Free and open source (MIT), made by **Neodata**. No telemetry — see [PRIVACY.md](PRIVACY.md).
+
+---
+
+The sections below cover running the server from source (FastAPI + PostgreSQL or SQLite)
+and developing the apps.
 
 ## Features
 

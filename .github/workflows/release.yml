@@ -1,0 +1,72 @@
+name: Release (Windows + macOS + iOS)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - name: Build Photobank.exe
+        shell: pwsh
+        run: |
+          Set-Location web; npm ci --no-audit --no-fund; Set-Location ..
+          py -m venv server\.venv
+          & server\.venv\Scripts\python.exe -m pip install --quiet --disable-pip-version-check -r server\requirements.txt
+          .\scripts\build-desktop.ps1
+          Compress-Archive -Path server\dist\Photobank\* -DestinationPath Photobank-Windows.zip
+      - uses: actions/upload-artifact@v5
+        with: { name: photobank-windows, path: Photobank-Windows.zip }
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - run: bash scripts/build-desktop.sh
+      - run: cd server/dist && ditto -c -k --sequesterRsrc --keepParent Photobank.app ../../Photobank-macOS.zip
+      - uses: actions/upload-artifact@v5
+        with: { name: photobank-macos, path: Photobank-macOS.zip }
+
+  ios:
+    runs-on: macos-latest
+    defaults: { run: { working-directory: mobile } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign
+      - run: |
+          mkdir -p Payload && cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r ../Photobank-iOS-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v5
+        with: { name: photobank-ios, path: Photobank-iOS-unsigned.ipa }
+
+  release:
+    needs: [windows, macos, ios]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v5
+        with: { merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Photobank-Windows.zip
+            Photobank-macOS.zip
+            Photobank-iOS-unsigned.ipa
+          generate_release_notes: true
