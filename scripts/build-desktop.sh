@@ -37,6 +37,10 @@ if [[ "$(uname)" == "Darwin" ]]; then
   $PB -c "Add :NSBonjourServices:0 string '_photobank._tcp'" "$PLIST" || true
   $PB -c "Add :LSUIElement bool false" "$PLIST" || true
   $PB -c "Add :NSHighResolutionCapable bool true" "$PLIST" || true
+  # editing Info.plist invalidates PyInstaller's ad-hoc signature, and macOS
+  # reports an invalid signature as "damaged" - re-sign the whole bundle
+  codesign --force --deep --sign - "$ROOT/server/dist/Photobank.app"
+  codesign --verify --deep --strict "$ROOT/server/dist/Photobank.app" && echo "signature OK"
   echo "Built: $ROOT/server/dist/Photobank.app"
 else
   echo "Built: $ROOT/server/dist/Photobank/Photobank"
