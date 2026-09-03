@@ -1,0 +1,40 @@
+name: Build macOS desktop app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - "web/**"
+      - "scripts/build-desktop.sh"
+      - ".github/workflows/macos.yml"
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build Photobank.app
+        run: bash scripts/build-desktop.sh
+
+      # zip keeps the .app bundle's structure and executable bits intact
+      - name: Package
+        run: |
+          cd server/dist
+          ditto -c -k --sequesterRsrc --keepParent Photobank.app Photobank-macOS.zip
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: photobank-macos
+          path: server/dist/Photobank-macOS.zip
+          retention-days: 30

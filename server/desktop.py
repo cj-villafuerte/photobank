@@ -17,7 +17,12 @@ import time
 import urllib.request
 from pathlib import Path
 
-APP_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Photobank"
+if sys.platform == "win32":
+    APP_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Photobank"
+elif sys.platform == "darwin":
+    APP_DIR = Path.home() / "Library" / "Application Support" / "Photobank"
+else:
+    APP_DIR = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local" / "share"))) / "Photobank"
 CONFIG_FILE = APP_DIR / "config.json"
 
 
@@ -58,23 +63,36 @@ def pick_port(preferred: int) -> int:
 
 
 def _acquire_single_instance() -> bool:
-    """Windows named mutex: returns False if another Photobank is already running."""
-    if os.name != "nt":
-        return True
-    import ctypes
+    """Returns False if another Photobank is already running.
 
-    kernel32 = ctypes.windll.kernel32
-    handle = kernel32.CreateMutexW(None, False, "Local\\PhotobankDesktopSingleton")
-    already = kernel32.GetLastError() == 183  # ERROR_ALREADY_EXISTS
-    if already:
-        kernel32.CloseHandle(handle)
+    Windows: named mutex. macOS/Linux: an exclusive flock on a lock file
+    (released automatically when the process exits, even on a crash).
+    """
+    global _INSTANCE_LOCK
+    if os.name == "nt":
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.CreateMutexW(None, False, "Local\\PhotobankDesktopSingleton")
+        if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            kernel32.CloseHandle(handle)
+            return False
+        _INSTANCE_LOCK = handle
+        return True
+    import fcntl
+
+    APP_DIR.mkdir(parents=True, exist_ok=True)
+    lock = open(APP_DIR / "instance.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lock.close()
         return False
-    global _MUTEX_HANDLE
-    _MUTEX_HANDLE = handle  # keep alive for the process lifetime
+    _INSTANCE_LOCK = lock  # keep the descriptor (and the lock) for the process lifetime
     return True
 
 
-_MUTEX_HANDLE = None
+_INSTANCE_LOCK = None
 
 
 def _raise_existing_instance() -> None:

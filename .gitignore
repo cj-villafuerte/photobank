@@ -4,3 +4,8 @@ __pycache__/
 *.pyc
 web/node_modules/
 web/dist/
+
+# build outputs
+server/dist/
+server/build/
+server/*.spec

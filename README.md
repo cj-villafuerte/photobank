@@ -86,6 +86,18 @@ log in, grant photo access ("All Photos"). Backups run while the app is open.
 
 **Android:** `flutter build apk` in `mobile/` produces an installable APK directly.
 
+## Desktop app
+
+`Photobank.exe` / `Photobank.app` runs the server (SQLite) with a native window and a
+tray / menu-bar icon; closing the window keeps the server running for phone syncs.
+
+- **Windows:** `.\scripts\build-desktop.ps1` → `server\dist\Photobank\Photobank.exe`
+- **macOS:** built by GitHub Actions (`Build macOS desktop app` workflow) → download
+  `photobank-macos` artifact → unzip → drag `Photobank.app` to Applications. First launch:
+  right-click → Open (unsigned app). Install helpers with `brew install ffmpeg tesseract`.
+  Data lives in `~/Library/Application Support/Photobank`, photos in `~/Pictures/Photobank`.
+- Or locally on a Mac: `bash scripts/build-desktop.sh`.
+
 ## Database redundancy (SQLite ⇄ PostgreSQL)
 
 The desktop app runs on SQLite; PostgreSQL can be kept as a mirror in case the

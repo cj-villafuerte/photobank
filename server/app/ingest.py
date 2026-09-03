@@ -32,16 +32,26 @@ PREVIEW_SIZE = 1440
 NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
 
 
+# GUI apps on macOS/Linux don't inherit the shell PATH, so look where package
+# managers put binaries (Homebrew Apple Silicon / Intel, MacPorts, Linux)
+UNIX_BIN_DIRS = ("/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin", "/usr/bin", "/snap/bin")
+
+
 @lru_cache
 def ffbin(name: str) -> str:
-    """Resolve ffmpeg/ffprobe even when the winget PATH entry isn't in this process."""
+    """Resolve ffmpeg/ffprobe even when the package manager's PATH entry isn't in this process."""
     found = shutil.which(name)
     if found:
         return found
-    winget = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Packages"
-    if winget.is_dir():
-        for candidate in winget.glob(f"Gyan.FFmpeg*/*/bin/{name}.exe"):
-            return str(candidate)
+    if os.name == "nt":
+        winget = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Packages"
+        if winget.is_dir():
+            for candidate in winget.glob(f"Gyan.FFmpeg*/*/bin/{name}.exe"):
+                return str(candidate)
+    else:
+        for d in UNIX_BIN_DIRS:
+            if (Path(d) / name).is_file():
+                return str(Path(d) / name)
     return name  # let subprocess fail with a clear error
 
 
@@ -51,10 +61,12 @@ def tessbin() -> str | None:
     found = shutil.which("tesseract")
     if found:
         return found
-    for candidate in (
+    candidates = [
         Path("C:/Program Files/Tesseract-OCR/tesseract.exe"),
         Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Tesseract-OCR" / "tesseract.exe",
-    ):
+        *(Path(d) / "tesseract" for d in UNIX_BIN_DIRS),
+    ]
+    for candidate in candidates:
         if candidate.is_file():
             return str(candidate)
     return None

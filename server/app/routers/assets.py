@@ -1,5 +1,6 @@
 import hashlib
 import subprocess
+import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -287,12 +288,17 @@ async def reveal_in_explorer(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Opens File Explorer on the SERVER machine with the original selected."""
+    """Opens the file manager on the SERVER machine with the original selected."""
     asset = await _get_owned_asset(asset_id, user, db)
     path = storage.absolute_from_root(asset.file_path)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="File missing from storage")
-    subprocess.Popen(["explorer", f"/select,{path}"])
+    if sys.platform == "win32":
+        subprocess.Popen(["explorer", f"/select,{path}"])
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)])  # Finder, file selected
+    else:
+        subprocess.Popen(["xdg-open", str(path.parent)])
 
 
 @router.post("/assets/{asset_id}/live-video", response_model=AssetOut)
