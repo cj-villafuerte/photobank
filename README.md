@@ -86,6 +86,21 @@ log in, grant photo access ("All Photos"). Backups run while the app is open.
 
 **Android:** `flutter build apk` in `mobile/` produces an installable APK directly.
 
+## Database redundancy (SQLite ⇄ PostgreSQL)
+
+The desktop app runs on SQLite; PostgreSQL can be kept as a mirror in case the
+SQLite file ever has problems. Media files are shared on disk, so only rows move.
+
+```powershell
+.\scripts\export-to-postgres.ps1        # mirror desktop SQLite -> Postgres (replace)
+```
+
+Under the hood: `server\dbsync.py --from <src> --to <dst> (--replace | --merge)`
+where `<src>/<dst>` are `desktop`, `pg`, a `.db` path, or a SQLAlchemy URL.
+`--merge` only adds rows missing in the target (safe for reconciling two
+databases that both received uploads); `--replace` makes an exact copy.
+Recover from Postgres with `--from pg --to desktop --replace`.
+
 ## Layout
 
 ```
