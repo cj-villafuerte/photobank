@@ -108,59 +108,70 @@ class _SettingsPageState extends State<SettingsPage> {
           Card(
             child: Column(
               children: [
-                SwitchListTile(
-                  title: const Text('Keep only recent media on this phone'),
-                  subtitle: Text(
-                    _retention
-                        ? 'Backed-up items older than $_months month${_months == 1 ? '' : 's'} '
-                          'are removed from the phone automatically (server-verified first).'
-                        : 'Off - nothing is removed automatically.',
+                ListTile(
+                  title: const Text('Keep on this phone'),
+                  subtitle: Text(_months == 0
+                      ? 'Nothing - "Free up space" removes every backed-up item.'
+                      : 'The last $_months month${_months == 1 ? '' : 's'}. "Free up space" removes '
+                        'backed-up items older than that.'),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final m in [1, 2, 3, 6, 12, 24])
+                            ChoiceChip(
+                              label: Text('$m mo'),
+                              selected: _months == m,
+                              onSelected: (_) => _setMonths(m),
+                            ),
+                          ChoiceChip(
+                            label: const Text('Nothing'),
+                            selected: _months == 0,
+                            onSelected: (_) => _setMonths(0),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Text('Custom:'),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 72,
+                            child: TextFormField(
+                              key: ValueKey(_months),
+                              initialValue: _months == 0 ? '' : '$_months',
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              decoration: const InputDecoration(isDense: true, hintText: 'months'),
+                              onFieldSubmitted: (v) {
+                                final m = int.tryParse(v.trim());
+                                if (m != null && m >= 0 && m <= 240) _setMonths(m);
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text('months'),
+                        ],
+                      ),
+                    ],
                   ),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Remove older items automatically'),
+                  subtitle: Text(_retention
+                      ? 'Applies the window above during background backups (server-verified first).'
+                      : 'Off - only the "Free up space" button removes anything.'),
                   value: _retention,
                   onChanged: _setRetention,
                 ),
-                if (_retention)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Text('Keep the last'),
-                            const SizedBox(width: 12),
-                            SizedBox(
-                              width: 72,
-                              child: TextFormField(
-                                key: ValueKey(_months),
-                                initialValue: '$_months',
-                                keyboardType: TextInputType.number,
-                                textAlign: TextAlign.center,
-                                decoration: const InputDecoration(isDense: true),
-                                onFieldSubmitted: (v) {
-                                  final m = int.tryParse(v.trim());
-                                  if (m != null && m >= 1 && m <= 120) _setMonths(m);
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text('month${_months == 1 ? '' : 's'} on this phone'),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          children: [1, 2, 3, 6, 12, 24]
-                              .map((m) => ChoiceChip(
-                                    label: Text('$m'),
-                                    selected: _months == m,
-                                    onSelected: (_) => _setMonths(m),
-                                  ))
-                              .toList(),
-                        ),
-                      ],
-                    ),
-                  ),
                 const Divider(height: 1),
                 SwitchListTile(
                   title: const Text('Remind me when backups pile up'),

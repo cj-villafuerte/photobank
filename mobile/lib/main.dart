@@ -462,17 +462,18 @@ class _SyncPageState extends State<SyncPage> {
     }
     final stats = await _service.stats();
     if (mounted) setState(() => _stats = stats);
+    // the keep window applies to the Free up space button regardless of the
+    // automatic toggle; the reminder card only shows when automatic is on
+    final months = prefs.getInt('retention_months') ?? 2;
+    var candidates = 0;
     if (prefs.getBool('retention_enabled') ?? false) {
-      final months = prefs.getInt('retention_months') ?? 2;
-      final candidates = await _service.retentionCandidates(months);
-      if (mounted) {
-        setState(() {
-          _retentionMonths = months;
-          _retentionCandidates = candidates.length;
-        });
-      }
-    } else if (mounted) {
-      setState(() => _retentionCandidates = 0);
+      candidates = (await _service.retentionCandidates(months)).length;
+    }
+    if (mounted) {
+      setState(() {
+        _retentionMonths = months;
+        _retentionCandidates = candidates;
+      });
     }
   }
 
@@ -595,15 +596,40 @@ class _SyncPageState extends State<SyncPage> {
   Future<void> _freeUpSpace() async {
     final stats = _stats;
     if (stats == null || stats.backedUp == 0) return;
-    // ask how far back to keep (null result = cancelled)
-    final choice = await showModalBottomSheet<_KeepChoice>(
+    // the keep window is a setting (Settings > Phone storage); just confirm
+    final months = _retentionMonths;
+    final before = months == 0 ? null : DateTime.now().subtract(Duration(days: 30 * months));
+    final count = (await _service.backedUp(before: before)).length;
+    if (!mounted) return;
+    if (count == 0) {
+      setState(() => _lastResult = months == 0
+          ? 'Nothing backed up to remove.'
+          : 'No backed-up items older than $months month${months == 1 ? '' : 's'}.');
+      return;
+    }
+    final dateText = before == null
+        ? ''
+        : ' taken before ${before.month}/${before.day}/${before.year}';
+    final confirmed = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      builder: (ctx) => _KeepWindowSheet(service: _service),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Free up space?'),
+        content: Text(
+          'This will delete $count backed-up photo${count == 1 ? '' : 's'}/video'
+          '${count == 1 ? '' : 's'}$dateText from this phone'
+          '${months == 0 ? '' : ' (keeping the last $months month${months == 1 ? '' : 's'})'}. '
+          'Each is verified on the server first, and iOS will ask you to confirm.\n\n'
+          'Change the window in Settings > Phone storage.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete $count')),
+        ],
+      ),
     );
-    if (choice == null) return;
+    if (confirmed != true) return;
     try {
-      final n = await _service.freeUpSpace(before: choice.before);
+      final n = await _service.freeUpSpace(before: before);
       _lastResult = n > 0 ? 'Removed $n items from this phone.' : 'Nothing was deleted.';
     } on ApiException catch (e) {
       _lastResult = 'Could not verify with server: ${e.message}';
@@ -731,7 +757,9 @@ class _SyncPageState extends State<SyncPage> {
                           icon: const Icon(Icons.cleaning_services),
                           label: Padding(
                             padding: const EdgeInsets.all(12),
-                            child: Text('Free up space (${stats.backedUp} backed up)'),
+                            child: Text(_retentionMonths == 0
+                                ? 'Free up space (remove all ${stats.backedUp} backed up)'
+                                : 'Free up space (keep last $_retentionMonths mo)'),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -825,156 +853,6 @@ class _SyncPageState extends State<SyncPage> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Result of the "how far back to keep" sheet. [before] null = remove everything.
-class _KeepChoice {
-  final DateTime? before;
-  const _KeepChoice(this.before);
-}
-
-/// Lets the user choose which backed-up items to remove from the phone:
-/// everything, older than N months, or taken before a date - with a live count.
-class _KeepWindowSheet extends StatefulWidget {
-  final SyncService service;
-  const _KeepWindowSheet({required this.service});
-  @override
-  State<_KeepWindowSheet> createState() => _KeepWindowSheetState();
-}
-
-class _KeepWindowSheetState extends State<_KeepWindowSheet> {
-  int? _months = 2; // null = everything (unless a date is chosen)
-  DateTime? _date;
-  final _custom = TextEditingController();
-  int? _count;
-
-  DateTime? get _before {
-    if (_date != null) return _date;
-    if (_months == null) return null;
-    return DateTime.now().subtract(Duration(days: 30 * _months!));
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _recount();
-  }
-
-  Future<void> _recount() async {
-    setState(() => _count = null);
-    final n = (await widget.service.backedUp(before: _before)).length;
-    if (mounted) setState(() => _count = n);
-  }
-
-  void _pick(int? months) {
-    setState(() {
-      _months = months;
-      _date = null;
-    });
-    _recount();
-  }
-
-  Future<void> _pickDate() async {
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _date ?? DateTime.now().subtract(const Duration(days: 60)),
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now(),
-      helpText: 'Remove backed-up media taken BEFORE',
-    );
-    if (d == null) return;
-    setState(() {
-      _date = d;
-      _months = null;
-    });
-    _recount();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final count = _count;
-    final label = _date != null
-        ? 'taken before ${_date!.month}/${_date!.day}/${_date!.year}'
-        : _months == null
-            ? 'every backed-up item'
-            : 'older than $_months month${_months == 1 ? '' : 's'}';
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Free up space', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 4),
-          Text('Choose how far back to keep on this phone. Only items the server '
-              'confirms it holds are removed.', style: Theme.of(context).textTheme.bodySmall),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final m in [1, 2, 3, 6, 12])
-                ChoiceChip(
-                  label: Text('Keep $m mo'),
-                  selected: _date == null && _months == m,
-                  onSelected: (_) => _pick(m),
-                ),
-              ChoiceChip(
-                label: const Text('Remove all'),
-                selected: _date == null && _months == null,
-                onSelected: (_) => _pick(null),
-              ),
-              ActionChip(
-                avatar: const Icon(Icons.event, size: 16),
-                label: Text(_date == null ? 'Before a date…' : 'Before ${_date!.month}/${_date!.day}/${_date!.year}'),
-                onPressed: _pickDate,
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              const Text('Custom: keep'),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 64,
-                child: TextField(
-                  controller: _custom,
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  decoration: const InputDecoration(isDense: true, hintText: '4'),
-                  onSubmitted: (v) {
-                    final m = int.tryParse(v.trim());
-                    if (m != null && m >= 1 && m <= 240) _pick(m);
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text('months'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            count == null ? 'Counting…' : '$count item${count == 1 ? '' : 's'} $label',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: (count == null || count == 0)
-                ? null
-                : () => Navigator.pop(context, _KeepChoice(_before)),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(count == null || count == 0
-                  ? 'Nothing to remove'
-                  : 'Delete $count from phone'),
-            ),
-          ),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        ],
       ),
     );
   }
