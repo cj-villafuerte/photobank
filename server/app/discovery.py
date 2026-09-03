@@ -10,6 +10,7 @@ from zeroconf.asyncio import AsyncZeroconf
 log = logging.getLogger("photobank.discovery")
 
 SERVICE_TYPE = "_photobank._tcp.local."
+status: dict = {"state": "not started"}  # surfaced via /api/health for diagnosis
 
 
 def _local_ip() -> str:
@@ -38,9 +39,11 @@ async def register(port: int) -> tuple[AsyncZeroconf, ServiceInfo] | None:
         azc = AsyncZeroconf()
         await azc.async_register_service(info)
         log.info("mDNS: announcing Photobank at %s:%s", ip, port)
+        status.update({"state": "announcing", "ip": ip, "port": port, "name": hostname})
         return azc, info
-    except Exception:
+    except Exception as e:
         log.exception("mDNS registration failed - discovery disabled, server still reachable by IP")
+        status.update({"state": "failed", "error": f"{type(e).__name__}: {e}"})
         return None
 
 

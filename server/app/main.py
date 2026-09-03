@@ -57,7 +57,7 @@ app.include_router(backup.router)
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "mdns": discovery.status}
 
 
 if WEB_DIST.is_dir():
