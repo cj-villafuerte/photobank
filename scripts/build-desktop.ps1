@@ -1,12 +1,16 @@
 # Builds the Photobank desktop app: web UI -> PyInstaller bundle with a native window.
 # Output: server\dist\Photobank\Photobank.exe
-$ErrorActionPreference = "Stop"
+# "Continue": native tools (npm, pip, pyinstaller) write progress to stderr, which
+# PowerShell would otherwise treat as a terminating error. Exit codes are checked instead.
+$ErrorActionPreference = "Continue"
 $root = Split-Path -Parent $PSScriptRoot
 
 Write-Host "== Building web app ==" -ForegroundColor Cyan
 Push-Location "$root\web"
 npm run build
+$webExit = $LASTEXITCODE
 Pop-Location
+if ($webExit -ne 0) { Write-Host "Web build failed." -ForegroundColor Red; exit 1 }
 
 Write-Host "== Installing build tools ==" -ForegroundColor Cyan
 & "$root\server\.venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check pyinstaller pywebview 2>$null
@@ -18,8 +22,10 @@ Push-Location "$root\server"
     --add-data "$root\web\dist;web_dist" `
     --collect-all pillow_heif `
     --hidden-import aiosqlite `
-    desktop.py
+    desktop.py 2>&1 | Where-Object { $_ -match "ERROR|WARNING: .*not found|Building" }
+$pyiExit = $LASTEXITCODE
 Pop-Location
+if ($pyiExit -ne 0) { Write-Host "PyInstaller failed (exit $pyiExit)." -ForegroundColor Red; exit 1 }
 
 $exe = "$root\server\dist\Photobank\Photobank.exe"
 if (Test-Path $exe) {
