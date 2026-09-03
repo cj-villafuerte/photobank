@@ -124,7 +124,8 @@ class Album {
 class ExistsDetail {
   final String assetId;
   final bool hasLiveVideo;
-  const ExistsDetail(this.assetId, this.hasLiveVideo);
+  final String? checksum;
+  const ExistsDetail(this.assetId, this.hasLiveVideo, {this.checksum});
 }
 
 class UploadOutcome {
@@ -204,6 +205,24 @@ class PhotobankApi {
       }
     }
     return existing;
+  }
+
+  /// Cheap reconciliation: which of these device items already exist on the
+  /// server (matched by name + capture time + dimensions, no hashing).
+  Future<Map<String, ExistsDetail>> matchAssets(List<Map<String, dynamic>> items) async {
+    final out = <String, ExistsDetail>{};
+    for (var i = 0; i < items.length; i += 500) {
+      final batch = items.sublist(i, i + 500 > items.length ? items.length : i + 500);
+      final res = await http.post(_u('/api/assets/match'),
+          headers: _headers, body: jsonEncode({'items': batch}));
+      if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+      for (final m in (jsonDecode(res.body) as Map<String, dynamic>)['matches'] as List) {
+        out[m['key'] as String] = ExistsDetail(
+            m['asset_id'] as String, m['has_live_video'] as bool? ?? false,
+            checksum: m['checksum'] as String);
+      }
+    }
+    return out;
   }
 
   /// Uploads one file; reports whether it was newly stored and its server id.

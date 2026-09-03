@@ -128,6 +128,30 @@ class ChecksumsOut(BaseModel):
     details: list[ExistsDetail] = []
 
 
+class MatchItem(BaseModel):
+    key: str  # opaque client id echoed back
+    name: str
+    taken_at: str | None = None  # device wall-clock time, "YYYY-MM-DDTHH:MM:SS"
+    width: int | None = None
+    height: int | None = None
+    duration_sec: float | None = None
+
+
+class MatchIn(BaseModel):
+    items: list[MatchItem] = Field(max_length=500)
+
+
+class MatchResult(BaseModel):
+    key: str
+    asset_id: uuid.UUID
+    checksum: str
+    has_live_video: bool
+
+
+class MatchOut(BaseModel):
+    matches: list[MatchResult]
+
+
 class DuplicateGroup(BaseModel):
     assets: list[AssetThin]
     wasted_bytes: int

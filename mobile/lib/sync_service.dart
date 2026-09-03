@@ -37,6 +37,10 @@ class SyncService {
   SharedPreferences? _prefs;
   Map<String, String> _synced = {}; // asset id -> checksum
   Set<String> _liveDone = {}; // asset ids whose live-photo video is confirmed on server
+  // matched to the server by metadata only (not hashed here): must be
+  // hash-verified before the device copy is ever deleted
+  Set<String> _metaMatched = {};
+  DateTime? _lastReconcile;
   bool cancelRequested = false;
 
   SyncService(this.api);
@@ -48,11 +52,100 @@ class SyncService {
       _synced = (jsonDecode(raw) as Map).cast<String, String>();
     }
     _liveDone = (_prefs!.getStringList('live_done_v1') ?? []).toSet();
+    _metaMatched = (_prefs!.getStringList('meta_matched_v1') ?? []).toSet();
   }
 
   Future<void> _save() async {
     await _prefs!.setString('synced_v1', jsonEncode(_synced));
     await _prefs!.setStringList('live_done_v1', _liveDone.toList());
+    await _prefs!.setStringList('meta_matched_v1', _metaMatched.toList());
+  }
+
+  /// Bring the local index in line with the server without hashing:
+  /// 1. items we think are backed up but the server no longer has -> unsynced
+  /// 2. items we think need syncing but the server already has (matched by
+  ///    name + capture time + dimensions) -> marked synced (meta-matched)
+  /// Cheap (a few batched calls), so it runs before every sync/stats refresh.
+  Future<void> reconcile({bool force = false, void Function(String)? onStatus}) async {
+    if (!force &&
+        _lastReconcile != null &&
+        DateTime.now().difference(_lastReconcile!) < const Duration(minutes: 5)) {
+      return;
+    }
+    final assets = await _allAssets();
+    final byId = {for (final a in assets) a.id: a};
+
+    // 1. drop records whose checksum vanished from the server
+    final tracked = _synced.entries.where((e) => byId.containsKey(e.key)).toList();
+    if (tracked.isNotEmpty) {
+      onStatus?.call('checking ${tracked.length} backed-up items…');
+      final have = await api.existingChecksums(tracked.map((e) => e.value).toSet().toList());
+      var dropped = 0;
+      for (final e in tracked) {
+        if (!have.containsKey(e.value)) {
+          _synced.remove(e.key);
+          _liveDone.remove(e.key);
+          _metaMatched.remove(e.key);
+          dropped++;
+        }
+      }
+      if (dropped > 0) onStatus?.call('$dropped items are no longer on the server');
+    }
+    // forget records for items that left the device
+    _synced.removeWhere((id, _) => !byId.containsKey(id));
+
+    // 2. metadata-match the rest so an outdated index does not re-sync
+    final unknown = assets.where((a) => !_synced.containsKey(a.id)).toList();
+    if (unknown.isNotEmpty) {
+      onStatus?.call('matching ${unknown.length} items against the server…');
+      final items = <Map<String, dynamic>>[];
+      for (final a in unknown) {
+        final t = a.createDateTime;
+        items.add({
+          'key': a.id,
+          'name': await a.titleAsync,
+          'taken_at': '${t.year.toString().padLeft(4, '0')}-${t.month.toString().padLeft(2, '0')}-'
+              '${t.day.toString().padLeft(2, '0')}T${t.hour.toString().padLeft(2, '0')}:'
+              '${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}',
+          'width': a.width,
+          'height': a.height,
+          'duration_sec': a.duration > 0 ? a.duration.toDouble() : null,
+        });
+      }
+      final matched = await api.matchAssets(items);
+      for (final e in matched.entries) {
+        if (e.value.checksum != null) {
+          _synced[e.key] = e.value.checksum!;
+          _metaMatched.add(e.key);
+          if (e.value.hasLiveVideo) _liveDone.add(e.key);
+        }
+      }
+      if (matched.isNotEmpty) onStatus?.call('${matched.length} already on the server');
+    }
+    _lastReconcile = DateTime.now();
+    await _save();
+  }
+
+  /// For items matched by metadata only, hash the file now and make sure the
+  /// server really has THIS content before it may be deleted from the device.
+  Future<bool> _verifiedOnServer(AssetEntity a) async {
+    if (!_metaMatched.contains(a.id)) return true; // hashed at upload time
+    final file = await _fetchOriginal(a, timeout: const Duration(minutes: 2));
+    if (file == null) return false;
+    try {
+      final checksum = await _sha256OfFile(file);
+      final have = await api.existingChecksums([checksum]);
+      if (have.containsKey(checksum)) {
+        _synced[a.id] = checksum;
+        _metaMatched.remove(a.id);
+        return true;
+      }
+      _synced.remove(a.id); // false match: treat as not backed up
+      _metaMatched.remove(a.id);
+      return false;
+    } finally {
+      _discardCopy(file);
+    }
   }
 
   Future<bool> requestPermission() async {
@@ -76,6 +169,11 @@ class SyncService {
   }
 
   Future<DeviceStats> stats() async {
+    try {
+      await reconcile(); // throttled; never let a stale index inflate "to sync"
+    } catch (_) {
+      // offline / server asleep: fall back to the local index
+    }
     final assets = await _allAssets();
     final backedUp = assets.where((a) => _synced.containsKey(a.id)).length;
     return DeviceStats(assets.length, backedUp);
@@ -136,6 +234,8 @@ class SyncService {
   }) async* {
     cancelRequested = false;
     await _purgePluginCache(); // stale copies from an interrupted earlier run
+    onStatus?.call('reconciling with server…');
+    await reconcile(force: true, onStatus: onStatus);
     final assets = await _allAssets();
     final todo = assets.where((a) => !_synced.containsKey(a.id)).toList()
       ..sort((a, b) => oldestFirst
@@ -301,8 +401,15 @@ class SyncService {
     // re-verify against the server before deleting anything
     final checksums = candidates.map((a) => _synced[a.id]!).toSet().toList();
     final confirmed = await api.existingChecksums(checksums);
-    final deletable = candidates.where((a) => confirmed.containsKey(_synced[a.id]!)).toList();
-    if (deletable.isEmpty) return 0;
+    final deletable = <AssetEntity>[];
+    for (final a in candidates) {
+      if (!confirmed.containsKey(_synced[a.id]!)) continue;
+      if (await _verifiedOnServer(a)) deletable.add(a); // hashes meta-matched items
+    }
+    if (deletable.isEmpty) {
+      await _save();
+      return 0;
+    }
 
     final deletedIds = await PhotoManager.editor.deleteWithIds(
       deletable.map((a) => a.id).toList(),
@@ -330,11 +437,15 @@ class SyncService {
     if (candidates.isEmpty) return 0;
     final checksums = candidates.map((a) => _synced[a.id]!).toSet().toList();
     final confirmed = await api.existingChecksums(checksums);
-    final deletable = candidates
-        .where((a) => confirmed.containsKey(_synced[a.id]!))
-        .map((a) => a.id)
-        .toList();
-    if (deletable.isEmpty) return 0;
+    final deletable = <String>[];
+    for (final a in candidates) {
+      if (!confirmed.containsKey(_synced[a.id]!)) continue;
+      if (await _verifiedOnServer(a)) deletable.add(a.id);
+    }
+    if (deletable.isEmpty) {
+      await _save();
+      return 0;
+    }
     final deleted = await PhotoManager.editor.deleteWithIds(deletable);
     for (final id in deleted) {
       _synced.remove(id);

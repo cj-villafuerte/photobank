@@ -24,6 +24,9 @@ from ..schemas import (
     DailyStat,
     DuplicateGroup,
     ExistsDetail,
+    MatchIn,
+    MatchOut,
+    MatchResult,
     StatsOut,
     TextMatch,
     TextSearchResult,
@@ -188,6 +191,61 @@ async def assets_exist(
             for r in rows
         ],
     )
+
+
+@router.post("/assets/match", response_model=MatchOut)
+async def match_assets(
+    body: MatchIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cheap reconciliation for the mobile app: which device items are probably
+    already on the server, matched by filename + capture time + dimensions
+    (no hashing). Clients must still hash-verify before deleting anything."""
+    if not body.items:
+        return MatchOut(matches=[])
+    names = {i.name for i in body.items}
+    rows = (
+        await db.scalars(
+            select(Asset).where(Asset.owner_id == user.id, Asset.original_filename.in_(names))
+        )
+    ).all()
+    by_name: dict[str, list[Asset]] = {}
+    for a in rows:
+        by_name.setdefault(a.original_filename, []).append(a)
+
+    def dims_ok(a: Asset, item) -> bool:
+        if item.width is None or a.width is None:
+            return True
+        return {a.width, a.height} == {item.width, item.height}  # orientation-agnostic
+
+    def time_ok(a: Asset, item) -> bool:
+        if not item.taken_at:
+            return False
+        try:
+            t = datetime.fromisoformat(item.taken_at)
+        except ValueError:
+            return False
+        server = a.taken_at.replace(tzinfo=None)  # EXIF wall-clock stored as naive UTC
+        return abs((server - t).total_seconds()) <= 2
+
+    matches = []
+    for item in body.items:
+        candidates = [a for a in by_name.get(item.name, []) if dims_ok(a, item)]
+        if not candidates:
+            continue
+        exact = [a for a in candidates if time_ok(a, item)]
+        chosen = None
+        if exact:
+            chosen = exact[0]
+        elif len(candidates) == 1 and item.width is not None:
+            chosen = candidates[0]  # unique name+dims for this user
+        if chosen is not None:
+            matches.append(MatchResult(
+                key=item.key, asset_id=chosen.id, checksum=chosen.checksum,
+                has_live_video=chosen.live_video_path is not None,
+            ))
+    return MatchOut(matches=matches)
 
 
 SORT_ORDERS = {
