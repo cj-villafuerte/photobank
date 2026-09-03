@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import mimetypes
 import os
 import shutil
 import uuid
@@ -45,6 +46,23 @@ TAG_MAKE = 0x010F
 TAG_MODEL = 0x0110
 GPS_LAT_REF, GPS_LAT, GPS_LON_REF, GPS_LON = 1, 2, 3, 4
 EXIF_IFD, GPS_IFD = 0x8769, 0x8825
+
+
+EXTRA_MIME = {
+    ".heic": "image/heic", ".heif": "image/heif", ".avif": "image/avif",
+    ".mov": "video/quicktime", ".m4v": "video/x-m4v", ".3gp": "video/3gpp",
+}
+
+
+def guess_mime(ext: str, declared: str | None) -> str:
+    """Trust the client's type unless it's missing/generic, then go by extension."""
+    if declared and declared != "application/octet-stream":
+        return declared
+    ext = ext.lower()
+    if ext in EXTRA_MIME:
+        return EXTRA_MIME[ext]
+    guessed, _ = mimetypes.guess_type(f"f{ext}")
+    return guessed or "application/octet-stream"
 
 
 def classify(ext: str) -> str | None:

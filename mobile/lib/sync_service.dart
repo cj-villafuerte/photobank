@@ -106,11 +106,21 @@ class SyncService {
     }
   }
 
-  static Future<String> _sha256OfFile(File file) async {
+  static Future<String> _sha256OfFile(File file,
+      {void Function(int done, int total)? onProgress}) async {
+    final total = await file.length();
     final output = AccumulatorSink<Digest>();
     final input = sha256.startChunkedConversion(output);
+    var done = 0;
+    var lastReport = 0;
     await for (final chunk in file.openRead()) {
       input.add(chunk);
+      done += chunk.length;
+      // throttle UI updates to ~every 2% of the file
+      if (onProgress != null && (done - lastReport) * 50 >= total) {
+        lastReport = done;
+        onProgress(done, total);
+      }
     }
     input.close();
     return output.events.single.toString();
@@ -142,8 +152,9 @@ class SyncService {
           failed++;
         } else {
           onStatus?.call('checking…');
-          final checksum =
-              await _sha256OfFile(file).timeout(const Duration(minutes: 10));
+          final checksum = await _sha256OfFile(file, onProgress: (d, t) {
+            onStatus?.call('checking ${(d / t * 100).clamp(0, 100).round()}%');
+          }).timeout(const Duration(minutes: 10));
           final existing = await api.existingChecksums([checksum]);
           String? serverId;
           var serverHasLive = false;

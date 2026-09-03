@@ -3,6 +3,23 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+
+const _mimeByExt = {
+  'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif',
+  'webp': 'image/webp', 'heic': 'image/heic', 'heif': 'image/heif', 'avif': 'image/avif',
+  'bmp': 'image/bmp', 'tif': 'image/tiff', 'tiff': 'image/tiff',
+  'mp4': 'video/mp4', 'mov': 'video/quicktime', 'm4v': 'video/x-m4v',
+  'webm': 'video/webm', 'mkv': 'video/x-matroska', 'avi': 'video/x-msvideo',
+  '3gp': 'video/3gpp',
+};
+
+MediaType? mediaTypeFor(String filename) {
+  final dot = filename.lastIndexOf('.');
+  if (dot < 0) return null;
+  final mime = _mimeByExt[filename.substring(dot + 1).toLowerCase()];
+  return mime == null ? null : MediaType.parse(mime);
+}
 
 /// MultipartRequest that reports how many bytes have been handed to the
 /// HTTP client, so the UI can show per-file upload progress.
@@ -147,7 +164,8 @@ class PhotobankApi {
         ? _ProgressMultipartRequest('POST', _u('/api/assets'), onProgress: onProgress)
         : http.MultipartRequest('POST', _u('/api/assets'));
     if (token != null) req.headers['Authorization'] = 'Bearer $token';
-    req.files.add(await http.MultipartFile.fromPath('file', file.path, filename: filename));
+    req.files.add(await http.MultipartFile.fromPath('file', file.path,
+        filename: filename, contentType: mediaTypeFor(filename)));
     if (takenAt != null) {
       req.fields['last_modified_ms'] = takenAt.millisecondsSinceEpoch.toString();
     }
@@ -164,7 +182,8 @@ class PhotobankApi {
   Future<void> uploadLiveVideo(String assetId, File file) async {
     final req = http.MultipartRequest('POST', _u('/api/assets/$assetId/live-video'));
     req.headers.addAll(authHeaders);
-    req.files.add(await http.MultipartFile.fromPath('file', file.path, filename: 'live.mov'));
+    req.files.add(await http.MultipartFile.fromPath('file', file.path,
+        filename: 'live.mov', contentType: MediaType('video', 'quicktime')));
     final streamed = await req.send().timeout(const Duration(minutes: 10));
     final res = await http.Response.fromStream(streamed);
     if (res.statusCode != 200 && res.statusCode != 201) {

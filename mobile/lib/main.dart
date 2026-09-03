@@ -152,9 +152,17 @@ class _SetupPageState extends State<SetupPage> {
           service.resolve(discovery.serviceResolver);
         } else if (event.type == BonsoirDiscoveryEventType.discoveryServiceResolved) {
           final json = service.toJson();
-          final host = json['service.host'] ?? json['host'];
           final port = json['service.port'] ?? json['port'] ?? 8000;
-          if (host != null) {
+          // prefer the numeric IP from TXT metadata: Dart's HTTP client
+          // cannot resolve .local mDNS hostnames on iOS/Android
+          String? host = service.attributes['ip'];
+          if (host == null || host.isEmpty) {
+            host = (json['service.host'] ?? json['host'])?.toString();
+            if (host != null && host.endsWith('.')) {
+              host = host.substring(0, host.length - 1);
+            }
+          }
+          if (host != null && host.isNotEmpty) {
             final displayName =
                 (service.attributes['name']?.isNotEmpty ?? false) ? service.attributes['name']! : service.name;
             setState(() {

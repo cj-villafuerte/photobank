@@ -114,7 +114,7 @@ async def upload_asset(
             original_filename=filename,
             file_path=storage.relative_to_root(dest),
             file_size=size,
-            mime_type=file.content_type or "application/octet-stream",
+            mime_type=ingest.guess_mime(ext, file.content_type),
             asset_type=asset_type,
             taken_at=taken_at,
             taken_at_source=taken_at_source,

@@ -32,7 +32,7 @@ async def register(port: int) -> tuple[AsyncZeroconf, ServiceInfo] | None:
             f"Photobank on {hostname}.{SERVICE_TYPE}",
             addresses=[socket.inet_aton(ip)],
             port=port,
-            properties={"name": hostname, "version": "1"},
+            properties={"name": hostname, "version": "1", "ip": ip},
             server=f"{hostname}.local.",
         )
         azc = AsyncZeroconf()
