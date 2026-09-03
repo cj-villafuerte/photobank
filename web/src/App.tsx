@@ -28,7 +28,7 @@ function NavBar({ user }: { user: User }) {
   };
   return (
     <nav className="nav">
-      <span className="brand">📷 Photobank</span>
+      <span className="brand">Photobank<small>by Neodata</small></span>
       <NavLink to="/" end className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
         Timeline
       </NavLink>

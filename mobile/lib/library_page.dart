@@ -8,15 +8,16 @@ import 'package:video_player/video_player.dart';
 
 import 'albums_page.dart' show showAddToAlbumSheet;
 import 'api.dart';
+import 'theme.dart';
 
 /// Grid thumbnail; shows a "processing" tile while the server has not
 /// generated the thumbnail yet (fresh uploads) instead of a blank square.
 Widget thumbTile(PhotobankApi api, RemoteAsset a) {
   if (a.thumbStatus != 'done') {
     return Container(
-      color: Colors.white10,
-      child: Icon(a.thumbStatus == 'failed' ? Icons.broken_image : Icons.hourglass_top,
-          size: 18, color: Colors.white38),
+      color: PbColors.surface2,
+      child: Icon(a.thumbStatus == 'failed' ? Icons.broken_image_outlined : Icons.hourglass_top,
+          size: 18, color: PbColors.faint),
     );
   }
   return Image.network(
@@ -24,8 +25,9 @@ Widget thumbTile(PhotobankApi api, RemoteAsset a) {
     headers: api.authHeaders,
     cacheWidth: 360,
     fit: BoxFit.cover,
-    errorBuilder: (_, _, _) =>
-        Container(color: Colors.white10, child: const Icon(Icons.broken_image, size: 18)),
+    errorBuilder: (_, _, _) => Container(
+        color: PbColors.surface2,
+        child: const Icon(Icons.broken_image_outlined, size: 18, color: PbColors.faint)),
   );
 }
 
@@ -372,7 +374,7 @@ class _BucketSection extends StatelessWidget {
                       if (a.isFavorite)
                         const Positioned(
                           left: 4, bottom: 4,
-                          child: Icon(Icons.favorite, size: 14, color: Colors.redAccent,
+                          child: Icon(Icons.favorite, size: 14, color: PbColors.accent,
                               shadows: [Shadow(blurRadius: 4)]),
                         ),
                     ],

@@ -32,7 +32,10 @@ export default function Login() {
   return (
     <div className="auth-wrap">
       <form className="auth-card" onSubmit={submit}>
-        <h1>📷 Photobank</h1>
+        <h1>Photobank</h1>
+        <div className="mono" style={{ color: "var(--faint)", fontSize: 10, textAlign: "center", marginTop: -4 }}>
+          by Neodata
+        </div>
         {mode === "register" && (
           <input
             placeholder="Display name"

@@ -3,7 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { api, DailyStat } from "../api";
 import { fmtBytes } from "../components/PhotoGrid";
 
-const MARK = "#3E90E8"; // validated against the dark surface (dataviz six checks)
+// Brief theme: bars in ink2 (a lone neutral series - contrast 12:1 on paper);
+// the hovered bar is the composition's single accent.
+const MARK = "#2B3239";
+const MARK_HOT = "#FF4A1C";
 
 interface Tip {
   x: number;
@@ -88,7 +91,7 @@ function BarChart({
                   width={Math.max(1, barW - Math.min(2, barW * 0.3))}
                   height={h}
                   rx={Math.min(2, barW / 3)}
-                  fill={MARK}
+                  fill={tip && Math.abs(tip.x - ((x + barW / 2) / W) * 100) < 0.01 ? MARK_HOT : MARK}
                 />
               )}
               {/* hover target wider than the mark */}

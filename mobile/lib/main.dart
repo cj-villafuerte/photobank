@@ -267,10 +267,17 @@ class _SetupPageState extends State<SetupPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('📷', textAlign: TextAlign.center, style: TextStyle(fontSize: 56)),
-                const SizedBox(height: 8),
-                Text('Photobank', textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium),
+                // wordmark: display 800 with the accent period
+                Text.rich(
+                  TextSpan(
+                    text: 'Photobank',
+                    style: pbDisplay(size: 40, weight: FontWeight.w800),
+                    children: [TextSpan(text: '.', style: pbDisplay(size: 40, weight: FontWeight.w800, color: PbColors.accent))],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                Text('BY NEODATA', textAlign: TextAlign.center, style: pbMono(size: 10)),
                 const SizedBox(height: 28),
                 Row(
                   children: [
@@ -687,6 +694,8 @@ class _SyncPageState extends State<SyncPage> {
                   child: ListView(
                     padding: const EdgeInsets.all(20),
                     children: [
+                      Text('01  BACKUP', style: pbMono(size: 11)),
+                      const SizedBox(height: 10),
                       Row(
                         children: [
                           _statCard('On this phone', '${stats.totalOnDevice}'),
@@ -862,9 +871,9 @@ class _SyncPageState extends State<SyncPage> {
           padding: const EdgeInsets.symmetric(vertical: 16),
           child: Column(
             children: [
-              Text(value, style: Theme.of(context).textTheme.headlineSmall),
+              Text(value, style: pbDisplay(size: 26)),
               const SizedBox(height: 4),
-              Text(label, style: Theme.of(context).textTheme.bodySmall),
+              Text(label.toUpperCase(), style: pbMono(size: 9)),
             ],
           ),
         ),

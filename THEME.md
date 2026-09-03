@@ -1,50 +1,52 @@
-# Photobank Theme
+# Photobank Theme — NeoData "Brief"
 
-Single source of truth for the visual language of the **web app** (`web/src/index.css`)
-and the **mobile app** (`mobile/lib/theme.dart`). Change a token here → update both files.
+Ink on paper. One accent. Everything else is type and hairlines.
+Source of truth for `web/src/index.css` (web + desktop app) and `mobile/lib/theme.dart`.
 
-## Palette (dark, the only mode for now)
+## Principles
+- **Paper, not screen.** White background, no gradients, shadows, glass, or dark mode.
+- **One accent per composition.** `accent` appears as the point of the sentence: an eyebrow
+  number, a headline's period, an arrow, a favorite mark, an alert value. Never a fill.
+- **Headlines are sentences.** Sentence case, ending in a period (`Timeline.`).
+- **Structure is drawn, not filled.** Hairlines and thin borders; surfaces near-white, sparingly.
+- **Numbered, not bulleted.** Section eyebrows: `01 PROFILE`, `02 PHONE STORAGE`.
+- **Mono is metadata.** Labels, tags, timestamps, sizes, specs → DM Mono, uppercase, tracked.
+- Photos carry the color. The UI stays neutral so the grid reads as the subject.
 
-| Token        | Hex       | Usage                                            |
-|--------------|-----------|--------------------------------------------------|
-| `bg`         | `#101418` | App background                                   |
-| `bg-raised`  | `#1A2027` | Cards, nav bars, sheets, inputs                  |
-| `border`     | `#2A333D` | Hairline borders, dividers                       |
-| `text`       | `#E8EDF2` | Primary text                                     |
-| `text-dim`   | `#8B98A5` | Secondary text, labels, captions                 |
-| `accent`     | `#4A9EFF` | Primary actions, links, focus, selection, progress |
-| `danger`     | `#FF5C5C` | Destructive actions, errors                      |
-| `on-accent`  | `#FFFFFF` | Text/icons on accent backgrounds                 |
+## Color
+| Token | Hex | Use |
+|---|---|---|
+| `paper` | `#FFFFFF` | page background |
+| `surface` | `#F5F6F7` | cards, table backgrounds, chips, inputs |
+| `surface2` | `#ECEEF1` | nested surfaces, hover |
+| `ink` | `#101418` | headlines, primary text, primary buttons |
+| `ink2` | `#2B3239` | secondary headline segments, chart bars |
+| `muted` | `#4B535C` | body copy |
+| `faint` | `#7B848E` | eyebrows, footers, tertiary metadata |
+| `line` | `#E3E6EA` | hairlines, card borders |
+| `line2` | `#B9C0C8` | emphasized rules (table header underline) |
+| `accent` | `#FF4A1C` | eyebrow numbers, headline period, arrows, favorite mark, alerts/destructive text, selected chart bar |
 
-Overlays: scrims/viewer chrome are black at 50–60% opacity (`rgba(0,0,0,.55)`).
-Favorites use the ❤️ red family (web emoji / mobile `Colors.redAccent`) — not `danger`.
+Inverted panels (viewer/lightbox): `ink` background, `paper` text, accent unchanged.
 
-## Typography
+## Typography (Google Fonts)
+- **Display — Bricolage Grotesque** 600/700/800, tracking −1.5% to −2%, line-height 1.05, sentence case + period.
+- **Body — Instrument Sans** 400/500, line-height 1.45.
+- **Mono — DM Mono** 400/500, +14% tracking, UPPERCASE: eyebrows, tags, badges, table headers, nav labels.
 
-- Web: `"Segoe UI", system-ui, sans-serif`. Mobile: platform default (SF Pro on iOS).
-- Scale: page title ~22px semibold · section header ~17px semibold · body ~14–15px ·
-  caption/meta ~12px in `text-dim`. No thin weights; regular + semibold only.
+Web scale (1440 viewport): page title 40, section 30, card title 20, body 15, eyebrow 11, tag 11.
+Mobile: title 28, section 20, body 15, eyebrow 11, tag 10.
 
-## Shape & spacing
+## Shape & structure
+- Radius **6px** everywhere; no pills.
+- Borders 1px `line`; emphasized rules `line2`. No shadows.
+- Buttons: ink on paper (hairline border) or paper on ink (primary). Never accent-filled.
+  Destructive: `accent` text on paper.
+- Photo grid: square, cover-cropped, 2px gutters; selection = 2px `ink` inset outline + ink check;
+  badges = `ink` at 80% with `paper` mono text; favorite = accent rounded square (the logo period).
+- Eyebrow pattern: `01  PROFILE` — number in accent, label in faint, both mono medium.
+- Wordmark: `Photobank.` display 700, period in accent; tag `BY NEODATA` mono faint.
 
-- Radii: buttons/inputs **6px** · cards **10px** · sheets/dialogs **12px** ·
-  photo thumbnails **4px** (web grid) / square-flush (mobile grid).
-- Base spacing unit 4px; screen padding 16–20px; grid gutters 2–6px (photos sit tight).
-- Borders are 1px `border`; elevation is expressed with `bg-raised` + border, not shadows.
-
-## Components
-
-- **Primary button**: `accent` fill, `on-accent` text, 6px radius, no border.
-- **Secondary button**: `bg-raised` fill, 1px `border`, `text`; hover/focus ring `accent`.
-- **Destructive**: secondary style with `danger` text, or `danger` fill for the final confirm.
-- **Inputs**: `bg-raised` fill, 1px `border`, focus border `accent`, placeholder `text-dim`.
-- **Photo grid**: square cells, cover-cropped; selection = 3px inset `accent` outline +
-  accent check badge; video badge = black-scrim pill, top-right; favorite heart bottom-left.
-- **Progress**: `accent` on `border` track.
-- **Viewer/lightbox**: pure black backdrop, chrome on 55% black scrim.
-- **Toasts/snackbars**: `bg-raised`, 1px `border`, 3px `accent` left edge (`danger` when error).
-
-## Identity
-
-App icon/emoji: 📷 · Display name: **Photobank** · Tone: quiet, dense, photo-first —
-the UI stays dark and low-contrast so photos carry the color.
+## Deviation for apps
+The brief's "no icons" rule is for compositions; touch UIs keep a minimal functional set
+(nav tabs, play, close, chevrons) in `ink`/`faint`, always paired with a mono label.

@@ -1,117 +1,186 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-/// Photobank theme tokens - keep in sync with THEME.md (source of truth)
-/// and web/src/index.css.
+/// NeoData "Brief" theme tokens - keep in sync with THEME.md and web/src/index.css.
+/// Ink on paper, one accent, hairlines instead of fills.
 abstract class PbColors {
-  static const bg = Color(0xFF101418);
-  static const bgRaised = Color(0xFF1A2027);
-  static const border = Color(0xFF2A333D);
-  static const text = Color(0xFFE8EDF2);
-  static const textDim = Color(0xFF8B98A5);
-  static const accent = Color(0xFF4A9EFF);
-  static const danger = Color(0xFFFF5C5C);
-  static const onAccent = Color(0xFFFFFFFF);
+  static const paper = Color(0xFFFFFFFF);
+  static const surface = Color(0xFFF5F6F7);
+  static const surface2 = Color(0xFFECEEF1);
+  static const ink = Color(0xFF101418);
+  static const ink2 = Color(0xFF2B3239);
+  static const muted = Color(0xFF4B535C);
+  static const faint = Color(0xFF7B848E);
+  static const line = Color(0xFFE3E6EA);
+  static const line2 = Color(0xFFB9C0C8);
+  static const accent = Color(0xFFFF4A1C);
+
+  // aliases kept for existing widgets
+  static const bg = paper;
+  static const bgRaised = surface;
+  static const border = line;
+  static const text = ink;
+  static const textDim = faint;
+  static const danger = accent;
+  static const onAccent = paper;
 }
 
+/// Mono metadata style: uppercase + tracked (eyebrows, tags, nav labels).
+TextStyle pbMono({double size = 11, Color color = PbColors.faint, FontWeight weight = FontWeight.w500}) =>
+    GoogleFonts.dmMono(fontSize: size, color: color, fontWeight: weight, letterSpacing: size * 0.14);
+
+TextStyle pbDisplay({double size = 28, Color color = PbColors.ink, FontWeight weight = FontWeight.w700}) =>
+    GoogleFonts.bricolageGrotesque(fontSize: size, color: color, fontWeight: weight, letterSpacing: -size * 0.02, height: 1.05);
+
 ThemeData photobankTheme() {
-  const scheme = ColorScheme.dark(
-    surface: PbColors.bg,
-    surfaceContainer: PbColors.bgRaised,
-    surfaceContainerHighest: PbColors.bgRaised,
-    primary: PbColors.accent,
-    onPrimary: PbColors.onAccent,
-    secondary: PbColors.accent,
-    onSecondary: PbColors.onAccent,
-    error: PbColors.danger,
-    onSurface: PbColors.text,
-    onSurfaceVariant: PbColors.textDim,
-    outline: PbColors.border,
-    outlineVariant: PbColors.border,
+  const scheme = ColorScheme.light(
+    surface: PbColors.paper,
+    surfaceContainer: PbColors.surface,
+    surfaceContainerHighest: PbColors.surface2,
+    primary: PbColors.ink,
+    onPrimary: PbColors.paper,
+    secondary: PbColors.ink2,
+    onSecondary: PbColors.paper,
+    error: PbColors.accent,
+    onSurface: PbColors.ink,
+    onSurfaceVariant: PbColors.faint,
+    outline: PbColors.line2,
+    outlineVariant: PbColors.line,
   );
 
-  const buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(6)));
+  const shape = RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(6)));
+  final sans = GoogleFonts.instrumentSansTextTheme();
+  final text = sans.copyWith(
+    headlineMedium: pbDisplay(size: 30),
+    headlineSmall: pbDisplay(size: 24),
+    titleLarge: pbDisplay(size: 22, weight: FontWeight.w600),
+    titleMedium: pbDisplay(size: 18, weight: FontWeight.w600),
+    titleSmall: pbMono(size: 11),
+    bodyLarge: GoogleFonts.instrumentSans(fontSize: 16, color: PbColors.ink, height: 1.45),
+    bodyMedium: GoogleFonts.instrumentSans(fontSize: 15, color: PbColors.muted, height: 1.45),
+    bodySmall: GoogleFonts.instrumentSans(fontSize: 13, color: PbColors.faint, height: 1.4),
+    labelLarge: GoogleFonts.instrumentSans(fontSize: 14, fontWeight: FontWeight.w500),
+  );
 
   return ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
-    scaffoldBackgroundColor: PbColors.bg,
-    appBarTheme: const AppBarTheme(
-      backgroundColor: PbColors.bgRaised,
-      foregroundColor: PbColors.text,
+    scaffoldBackgroundColor: PbColors.paper,
+    textTheme: text,
+    dividerColor: PbColors.line,
+    appBarTheme: AppBarTheme(
+      backgroundColor: PbColors.paper,
+      foregroundColor: PbColors.ink,
       elevation: 0,
+      scrolledUnderElevation: 0,
+      shape: const Border(bottom: BorderSide(color: PbColors.line)),
+      titleTextStyle: pbDisplay(size: 22),
     ),
     cardTheme: const CardThemeData(
-      color: PbColors.bgRaised,
+      color: PbColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(10)),
-        side: BorderSide(color: PbColors.border),
+        borderRadius: BorderRadius.all(Radius.circular(6)),
+        side: BorderSide(color: PbColors.line),
       ),
       margin: EdgeInsets.symmetric(vertical: 4),
     ),
+    // primary = paper on ink; never an accent fill
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: PbColors.accent,
-        foregroundColor: PbColors.onAccent,
-        shape: buttonShape,
+        backgroundColor: PbColors.ink,
+        foregroundColor: PbColors.paper,
+        shape: shape,
+        textStyle: text.labelLarge,
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: PbColors.text,
-        backgroundColor: PbColors.bgRaised,
-        side: const BorderSide(color: PbColors.border),
-        shape: buttonShape,
+        foregroundColor: PbColors.ink,
+        backgroundColor: PbColors.paper,
+        side: const BorderSide(color: PbColors.line2),
+        shape: shape,
+        textStyle: text.labelLarge,
       ),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: PbColors.accent, shape: buttonShape),
+      style: TextButton.styleFrom(foregroundColor: PbColors.ink, shape: shape, textStyle: text.labelLarge),
     ),
-    inputDecorationTheme: const InputDecorationTheme(
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: SegmentedButton.styleFrom(
+        selectedBackgroundColor: PbColors.ink,
+        selectedForegroundColor: PbColors.paper,
+        foregroundColor: PbColors.ink,
+        side: const BorderSide(color: PbColors.line2),
+        shape: shape,
+        textStyle: pbMono(size: 10, color: PbColors.ink),
+      ),
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: PbColors.surface,
+      selectedColor: PbColors.ink,
+      side: const BorderSide(color: PbColors.line),
+      shape: shape,
+      labelStyle: pbMono(size: 10, color: PbColors.ink),
+      secondaryLabelStyle: pbMono(size: 10, color: PbColors.paper),
+      checkmarkColor: PbColors.paper,
+      showCheckmark: false,
+    ),
+    inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: PbColors.bgRaised,
-      hintStyle: TextStyle(color: PbColors.textDim),
-      labelStyle: TextStyle(color: PbColors.textDim),
-      enabledBorder: OutlineInputBorder(
+      fillColor: PbColors.surface,
+      hintStyle: GoogleFonts.instrumentSans(color: PbColors.faint),
+      labelStyle: pbMono(size: 10),
+      enabledBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(6)),
-        borderSide: BorderSide(color: PbColors.border),
+        borderSide: BorderSide(color: PbColors.line),
       ),
-      focusedBorder: OutlineInputBorder(
+      focusedBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(6)),
-        borderSide: BorderSide(color: PbColors.accent),
+        borderSide: BorderSide(color: PbColors.ink),
       ),
     ),
-    dividerTheme: const DividerThemeData(color: PbColors.border, thickness: 1),
+    dividerTheme: const DividerThemeData(color: PbColors.line, thickness: 1),
     progressIndicatorTheme: const ProgressIndicatorThemeData(
-      color: PbColors.accent,
-      linearTrackColor: PbColors.border,
-      circularTrackColor: PbColors.border,
+      color: PbColors.ink,
+      linearTrackColor: PbColors.line,
+      circularTrackColor: PbColors.line,
     ),
-    snackBarTheme: const SnackBarThemeData(
-      backgroundColor: PbColors.bgRaised,
-      contentTextStyle: TextStyle(color: PbColors.text),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(8)),
-        side: BorderSide(color: PbColors.border),
-      ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? PbColors.paper : PbColors.faint),
+      trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? PbColors.ink : PbColors.surface2),
+      trackOutlineColor: const WidgetStatePropertyAll(PbColors.line2),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: PbColors.ink,
+      contentTextStyle: GoogleFonts.instrumentSans(color: PbColors.paper),
+      shape: shape,
+      behavior: SnackBarBehavior.floating,
     ),
     bottomSheetTheme: const BottomSheetThemeData(
-      backgroundColor: PbColors.bgRaised,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-      ),
+      backgroundColor: PbColors.paper,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(6))),
     ),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: PbColors.bgRaised,
-      indicatorColor: PbColors.accent.withValues(alpha: 0.22),
-      iconTheme: WidgetStatePropertyAll(const IconThemeData(color: PbColors.text)),
-      labelTextStyle: WidgetStatePropertyAll(
-        const TextStyle(color: PbColors.textDim, fontSize: 12),
-      ),
+      backgroundColor: PbColors.paper,
+      indicatorColor: PbColors.surface2,
+      indicatorShape: shape,
+      elevation: 0,
+      iconTheme: WidgetStateProperty.resolveWith(
+          (s) => IconThemeData(color: s.contains(WidgetState.selected) ? PbColors.ink : PbColors.faint, size: 22)),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+          (s) => pbMono(size: 9, color: s.contains(WidgetState.selected) ? PbColors.ink : PbColors.faint)),
     ),
-    dialogTheme: const DialogThemeData(
-      backgroundColor: PbColors.bgRaised,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+    dialogTheme: DialogThemeData(
+      backgroundColor: PbColors.paper,
+      shape: shape,
+      titleTextStyle: pbDisplay(size: 22),
+      contentTextStyle: GoogleFonts.instrumentSans(fontSize: 15, color: PbColors.muted, height: 1.45),
+    ),
+    listTileTheme: ListTileThemeData(
+      titleTextStyle: GoogleFonts.instrumentSans(fontSize: 15, color: PbColors.ink, fontWeight: FontWeight.w500),
+      subtitleTextStyle: GoogleFonts.instrumentSans(fontSize: 13, color: PbColors.faint),
+      iconColor: PbColors.ink,
     ),
   );
 }
