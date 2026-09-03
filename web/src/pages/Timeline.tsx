@@ -133,6 +133,13 @@ export default function Timeline({ favorites }: { favorites: boolean }) {
     invalidate();
   };
 
+  const hideSelected = async () => {
+    await api.hide(Array.from(selected));
+    toast(`${selected.size} hidden — find them in Settings`);
+    setSelected(new Set());
+    invalidate();
+  };
+
   const addSelectedToAlbum = async () => {
     if (!albumPick) return;
     await api.addToAlbum(albumPick, Array.from(selected));
@@ -201,6 +208,7 @@ export default function Timeline({ favorites }: { favorites: boolean }) {
             ))}
           </select>
           {albumPick && <button onClick={addSelectedToAlbum}>Add</button>}
+          <button onClick={hideSelected}>🙈 Hide</button>
           <button className="danger" onClick={trashSelected}>
             🗑 Trash
           </button>

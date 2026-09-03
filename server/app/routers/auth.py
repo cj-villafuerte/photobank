@@ -13,7 +13,7 @@ from ..auth import (
 from ..config import settings
 from ..db import get_db
 from ..models import User
-from ..schemas import LoginIn, RegisterIn, UserOut
+from ..schemas import LoginIn, PasswordChange, RegisterIn, UserOut
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -70,3 +70,15 @@ async def logout(response: Response):
 @router.get("/me", response_model=UserOut)
 async def me(user: User = Depends(get_current_user)):
     return user
+
+
+@router.post("/change-password", status_code=204)
+async def change_password(
+    body: PasswordChange,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not verify_password(user.password_hash, body.current_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    user.password_hash = hash_password(body.new_password)
+    await db.commit()

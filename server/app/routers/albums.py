@@ -66,7 +66,11 @@ async def get_album(
         await db.scalars(
             select(Asset)
             .join(AlbumAsset, AlbumAsset.asset_id == Asset.id)
-            .where(AlbumAsset.album_id == album.id, Asset.trashed_at.is_(None))
+            .where(
+                AlbumAsset.album_id == album.id,
+                Asset.trashed_at.is_(None),
+                Asset.hidden_at.is_(None),
+            )
             .order_by(Asset.taken_at.desc())
         )
     ).all()

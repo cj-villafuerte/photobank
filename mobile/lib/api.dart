@@ -196,6 +196,26 @@ class PhotobankApi {
   String liveVideoUrl(String id) => '$baseUrl/api/assets/$id/live-video';
   String originalUrl(String id) => '$baseUrl/api/assets/$id/original';
 
+  Future<void> hideAssets(List<String> ids) async {
+    final res = await http.post(_u('/api/assets/hide'),
+        headers: _headers, body: jsonEncode({'asset_ids': ids}));
+    if (res.statusCode != 204) throw ApiException(res.statusCode, _detail(res));
+  }
+
+  Future<void> unhideAssets(List<String> ids) async {
+    final res = await http.post(_u('/api/assets/unhide'),
+        headers: _headers, body: jsonEncode({'asset_ids': ids}));
+    if (res.statusCode != 204) throw ApiException(res.statusCode, _detail(res));
+  }
+
+  Future<List<RemoteAsset>> hiddenAssets() async {
+    final res = await http.get(_u('/api/hidden'), headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    return (jsonDecode(res.body) as List)
+        .map((j) => RemoteAsset.fromJson(j as Map<String, dynamic>))
+        .toList();
+  }
+
   Map<String, String> get authHeaders =>
       {if (token != null) 'Authorization': 'Bearer $token'};
 

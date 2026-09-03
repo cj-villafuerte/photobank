@@ -26,6 +26,11 @@ class LoginIn(BaseModel):
     password: str
 
 
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
+
+
 class AssetOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -45,6 +50,7 @@ class AssetOut(BaseModel):
     camera_model: str | None
     is_favorite: bool
     trashed_at: datetime | None
+    hidden_at: datetime | None = None
     thumb_status: str
     has_live_video: bool = False
     created_at: datetime

@@ -201,7 +201,7 @@ async def list_assets(
         raise HTTPException(status_code=400, detail=f"Unknown sort: {sort}")
     stmt = (
         select(Asset)
-        .where(Asset.owner_id == user.id, Asset.trashed_at.is_(None))
+        .where(Asset.owner_id == user.id, Asset.trashed_at.is_(None), Asset.hidden_at.is_(None))
         .order_by(order(), Asset.id)
         .offset(max(offset, 0))
         .limit(min(max(limit, 1), 500))
@@ -282,7 +282,7 @@ async def timeline_buckets(
     bucket = func.to_char(Asset.taken_at, "YYYY-MM")
     stmt = (
         select(bucket.label("bucket"), func.count().label("count"))
-        .where(Asset.owner_id == user.id, Asset.trashed_at.is_(None))
+        .where(Asset.owner_id == user.id, Asset.trashed_at.is_(None), Asset.hidden_at.is_(None))
         .group_by(bucket)
         .order_by(bucket.desc())
     )
@@ -308,6 +308,7 @@ async def timeline_bucket(
         .where(
             Asset.owner_id == user.id,
             Asset.trashed_at.is_(None),
+            Asset.hidden_at.is_(None),
             func.to_char(Asset.taken_at, "YYYY-MM") == bucket,
         )
         .order_by(Asset.taken_at.desc())
@@ -408,6 +409,51 @@ async def permanent_delete(
     storage.delete_asset_files(asset.owner_id, asset.id, asset.file_path, asset.live_video_path)
     await db.delete(asset)
     await db.commit()
+
+
+@router.post("/assets/hide", status_code=204)
+async def hide_assets(
+    body: AssetIds,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await db.execute(
+        update(Asset)
+        .where(Asset.owner_id == user.id, Asset.id.in_(body.asset_ids))
+        .values(hidden_at=datetime.now(timezone.utc))
+    )
+    await db.commit()
+
+
+@router.post("/assets/unhide", status_code=204)
+async def unhide_assets(
+    body: AssetIds,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await db.execute(
+        update(Asset)
+        .where(Asset.owner_id == user.id, Asset.id.in_(body.asset_ids))
+        .values(hidden_at=None)
+    )
+    await db.commit()
+
+
+@router.get("/hidden", response_model=list[AssetThin])
+async def list_hidden(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    assets = await db.scalars(
+        select(Asset)
+        .where(
+            Asset.owner_id == user.id,
+            Asset.hidden_at.is_not(None),
+            Asset.trashed_at.is_(None),
+        )
+        .order_by(Asset.taken_at.desc())
+    )
+    return assets.all()
 
 
 @router.get("/trash", response_model=list[AssetThin])

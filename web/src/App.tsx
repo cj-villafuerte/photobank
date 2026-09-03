@@ -8,6 +8,8 @@ import Albums from "./pages/Albums";
 import AlbumDetail from "./pages/AlbumDetail";
 import Trash from "./pages/Trash";
 import Admin from "./pages/Admin";
+import Settings from "./pages/Settings";
+import Hidden from "./pages/Hidden";
 import { ToastProvider } from "./components/Toast";
 
 const UserContext = createContext<User | null>(null);
@@ -42,7 +44,9 @@ function NavBar({ user }: { user: User }) {
         </NavLink>
       )}
       <span className="spacer" />
-      <span className="who">{user.display_name}</span>
+      <NavLink to="/settings" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
+        ⚙ {user.display_name}
+      </NavLink>
       <button onClick={logout}>Log out</button>
     </nav>
   );
@@ -80,6 +84,8 @@ export default function App() {
           <Route path="/albums" element={<Albums />} />
           <Route path="/albums/:id" element={<AlbumDetail />} />
           <Route path="/trash" element={<Trash />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/settings/hidden" element={<Hidden />} />
           {user.is_admin && <Route path="/admin" element={<Admin />} />}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

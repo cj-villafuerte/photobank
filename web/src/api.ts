@@ -110,6 +110,16 @@ export const api = {
       `/api/assets/list?sort=${sort}&offset=${offset}&limit=${limit}&favorites=${favorites}`
     ),
   reveal: (id: string) => request<void>(`/api/assets/${id}/reveal`, { method: "POST" }),
+  hide: (asset_ids: string[]) =>
+    request<void>("/api/assets/hide", { method: "POST", body: JSON.stringify({ asset_ids }) }),
+  unhide: (asset_ids: string[]) =>
+    request<void>("/api/assets/unhide", { method: "POST", body: JSON.stringify({ asset_ids }) }),
+  hidden: () => request<AssetThin[]>("/api/hidden"),
+  changePassword: (current_password: string, new_password: string) =>
+    request<void>("/api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ current_password, new_password }),
+    }),
   upload: (file: File): Promise<UploadResult> => {
     const form = new FormData();
     form.append("file", file);

@@ -407,6 +407,25 @@ class _AssetViewerState extends State<AssetViewer> {
         backgroundColor: Colors.black54,
         title: Text('${_index + 1} / ${widget.assets.length}'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.visibility_off),
+            tooltip: 'Hide (accessible from Settings)',
+            onPressed: () async {
+              try {
+                await widget.api.hideAssets([asset.id]);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Hidden - find it in Settings > Hidden photos')));
+                  Navigator.pop(context);
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text('Hide failed: $e')));
+                }
+              }
+            },
+          ),
           if (asset.hasLiveVideo)
             IconButton(
               icon: Icon(_videoIsLive && _video != null

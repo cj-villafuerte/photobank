@@ -67,6 +67,7 @@ class Asset(Base):
     camera_model: Mapped[str | None] = mapped_column(Text)
     is_favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     trashed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     thumb_status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
     live_video_path: Mapped[str | None] = mapped_column(Text)  # Live Photo companion video
 

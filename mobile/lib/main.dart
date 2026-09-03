@@ -8,6 +8,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'api.dart';
 import 'background.dart';
 import 'library_page.dart';
+import 'settings_page.dart';
 import 'sync_service.dart';
 import 'theme.dart';
 
@@ -97,6 +98,7 @@ class _HomeShellState extends State<HomeShell> {
             appBar: AppBar(title: const Text('Library')),
             body: LibraryPage(api: widget.api),
           ),
+          SettingsPage(api: widget.api, onLogout: widget.onLogout),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -105,6 +107,7 @@ class _HomeShellState extends State<HomeShell> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.cloud_upload_outlined), selectedIcon: Icon(Icons.cloud_upload), label: 'Backup'),
           NavigationDestination(icon: Icon(Icons.photo_library_outlined), selectedIcon: Icon(Icons.photo_library), label: 'Library'),
+          NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
         ],
       ),
     );
