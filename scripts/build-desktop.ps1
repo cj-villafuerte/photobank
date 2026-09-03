@@ -13,7 +13,7 @@ Pop-Location
 if ($webExit -ne 0) { Write-Host "Web build failed." -ForegroundColor Red; exit 1 }
 
 Write-Host "== Installing build tools ==" -ForegroundColor Cyan
-& "$root\server\.venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check pyinstaller pywebview 2>$null
+& "$root\server\.venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check pyinstaller pywebview pystray 2>$null
 
 Write-Host "== Freezing Photobank.exe ==" -ForegroundColor Cyan
 Push-Location "$root\server"
@@ -22,6 +22,7 @@ Push-Location "$root\server"
     --add-data "$root\web\dist;web_dist" `
     --collect-all pillow_heif `
     --hidden-import aiosqlite `
+    --hidden-import pystray._win32 `
     desktop.py 2>&1 | Where-Object { $_ -match "ERROR|WARNING: .*not found|Building" }
 $pyiExit = $LASTEXITCODE
 Pop-Location

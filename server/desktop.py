@@ -116,13 +116,63 @@ def main() -> None:
     else:
         import webview
 
-        webview.create_window(
+        window = webview.create_window(
             "Photobank", url, width=1280, height=850, min_size=(700, 500)
         )
-        webview.start()
+        tray = _make_tray(window, url)
+
+        def on_closing():
+            # closing the window hides it; the server keeps serving the LAN
+            # (phones keep syncing). Quit is on the tray icon.
+            if tray is not None:
+                window.hide()
+                return False
+            return True
+
+        window.events.closing += on_closing
+        webview.start()  # returns only after window.destroy() (tray Quit)
+        if tray is not None:
+            tray.stop()
 
     server.should_exit = True
     thread.join(timeout=10)
+
+
+def _make_tray(window, url: str):
+    """System tray icon: Open / Quit. Returns None if pystray is unavailable."""
+    try:
+        import webbrowser
+
+        import pystray
+        from PIL import Image, ImageDraw
+    except ImportError:
+        return None
+
+    icon_img = Image.new("RGBA", (64, 64), (16, 20, 24, 255))
+    d = ImageDraw.Draw(icon_img)
+    d.rounded_rectangle((8, 18, 56, 50), radius=8, fill=(74, 158, 255, 255))
+    d.ellipse((24, 26, 40, 42), fill=(16, 20, 24, 255))
+
+    def open_window(*_):
+        window.show()
+        window.restore()
+
+    def open_browser(*_):
+        webbrowser.open(url)
+
+    def quit_app(icon, *_):
+        icon.visible = False
+        window.destroy()
+
+    menu = pystray.Menu(
+        pystray.MenuItem("Open Photobank", open_window, default=True),
+        pystray.MenuItem("Open in browser", open_browser),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Quit (stops the server)", quit_app),
+    )
+    tray = pystray.Icon("Photobank", icon_img, "Photobank - server running", menu)
+    tray.run_detached()
+    return tray
 
 
 if __name__ == "__main__":
