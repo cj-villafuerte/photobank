@@ -40,6 +40,79 @@ def ffbin(name: str) -> str:
     return name  # let subprocess fail with a clear error
 
 
+@lru_cache
+def tessbin() -> str | None:
+    """Tesseract OCR binary, or None if not installed (OCR stays pending)."""
+    found = shutil.which("tesseract")
+    if found:
+        return found
+    for candidate in (
+        Path("C:/Program Files/Tesseract-OCR/tesseract.exe"),
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Tesseract-OCR" / "tesseract.exe",
+    ):
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def compute_dhash(image_path: Path) -> int:
+    """64-bit difference hash; visually similar images differ in few bits. Thread."""
+    with Image.open(image_path) as im:
+        im = im.convert("L").resize((9, 8), Image.LANCZOS)
+        px = list(im.getdata())
+    bits = 0
+    for row in range(8):
+        for col in range(8):
+            bits = (bits << 1) | (1 if px[row * 9 + col] > px[row * 9 + col + 1] else 0)
+    return bits - (1 << 64) if bits >= (1 << 63) else bits  # signed for BIGINT
+
+
+def _preview_to_png(preview: Path, png: Path) -> tuple[int, int]:
+    """Thread. Tesseract input; returns dimensions for box normalization."""
+    with Image.open(preview) as im:
+        im.save(png, "PNG")
+        return im.width, im.height
+
+
+async def run_ocr(preview: Path, work_dir: Path) -> list[dict]:
+    """OCR the preview; returns words with boxes normalized 0-1 to preview size."""
+    tess = tessbin()
+    if tess is None:
+        raise RuntimeError("tesseract not installed")
+    png = work_dir / f"ocr-{uuid.uuid4().hex}.png"
+    try:
+        width, height = await asyncio.to_thread(_preview_to_png, preview, png)
+        proc = await asyncio.create_subprocess_exec(
+            tess, str(png), "stdout", "tsv",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(f"tesseract exited {proc.returncode}")
+        words = []
+        for line in out.decode("utf-8", errors="ignore").splitlines()[1:]:
+            cols = line.split("\t")
+            if len(cols) < 12 or cols[0] != "5":  # level 5 = word
+                continue
+            text = cols[11].strip()
+            try:
+                conf = float(cols[10])
+            except ValueError:
+                continue
+            if not text or conf < 60:
+                continue
+            left, top, w, h = (int(cols[6]), int(cols[7]), int(cols[8]), int(cols[9]))
+            words.append({
+                "word": text,
+                "x": left / width, "y": top / height,
+                "w": w / width, "h": h / height,
+            })
+        return words
+    finally:
+        png.unlink(missing_ok=True)
+
+
 # EXIF tag ids
 TAG_DATETIME_ORIGINAL = 0x9003
 TAG_MAKE = 0x010F
@@ -254,8 +327,20 @@ class ThumbnailWorker:
         self.queue.put_nowait(asset_id)
 
     async def start(self) -> None:
+        from sqlalchemy import or_, and_
+
         async with self.sessionmaker() as db:
-            pending = await db.scalars(select(Asset.id).where(Asset.thumb_status == "pending"))
+            pending = await db.scalars(
+                select(Asset.id).where(
+                    or_(
+                        Asset.thumb_status == "pending",
+                        and_(
+                            Asset.asset_type == "image",
+                            or_(Asset.phash.is_(None), Asset.ocr_status == "pending"),
+                        ),
+                    )
+                )
+            )
             for asset_id in pending:
                 self.enqueue(asset_id)
         self._task = asyncio.create_task(self._run())
@@ -281,21 +366,49 @@ class ThumbnailWorker:
                 self.queue.task_done()
 
     async def _process(self, asset_id: uuid.UUID) -> None:
+        from .config import settings
+        from .models import AssetText
+
         async with self.sessionmaker() as db:
             asset = await db.get(Asset, asset_id)
-            if asset is None or asset.thumb_status == "done":
+            if asset is None:
                 return
             original = storage.absolute_from_root(asset.file_path)
             out_dir = storage.thumb_dir(asset.owner_id, asset.id)
-            try:
-                if asset.asset_type == "image":
-                    await asyncio.to_thread(_generate_image_thumbs, original, out_dir)
-                else:
-                    await _generate_video_thumbs(original, out_dir)
-                asset.thumb_status = "done"
-            except Exception:
-                log.exception("thumb failed: %s (%s)", asset.id, asset.original_filename)
-                asset.thumb_status = "failed"
+            if asset.thumb_status != "done":
+                try:
+                    if asset.asset_type == "image":
+                        await asyncio.to_thread(_generate_image_thumbs, original, out_dir)
+                    else:
+                        await _generate_video_thumbs(original, out_dir)
+                    asset.thumb_status = "done"
+                except Exception:
+                    log.exception("thumb failed: %s (%s)", asset.id, asset.original_filename)
+                    asset.thumb_status = "failed"
+
+            preview = out_dir / "preview.webp"
+            if asset.asset_type != "image":
+                if asset.ocr_status == "pending":
+                    asset.ocr_status = "skipped"
+            elif preview.is_file():
+                if asset.phash is None:
+                    try:
+                        asset.phash = await asyncio.to_thread(compute_dhash, preview)
+                    except Exception:
+                        log.exception("dhash failed: %s", asset.id)
+                if asset.ocr_status == "pending":
+                    if tessbin() is None:
+                        pass  # stays pending; retried after tesseract is installed
+                    else:
+                        try:
+                            words = await run_ocr(preview, settings.tmp_dir)
+                            db.add_all(
+                                AssetText(asset_id=asset.id, **word) for word in words
+                            )
+                            asset.ocr_status = "done"
+                        except Exception:
+                            log.exception("ocr failed: %s", asset.id)
+                            asset.ocr_status = "failed"
             await db.commit()
 
 

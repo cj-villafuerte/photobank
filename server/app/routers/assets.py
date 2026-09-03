@@ -13,7 +13,7 @@ from .. import ingest, storage
 from ..auth import get_current_user
 from ..config import settings
 from ..db import get_db
-from ..models import Asset, User
+from ..models import Asset, AssetText, User
 from ..schemas import (
     AssetIds,
     AssetOut,
@@ -21,7 +21,12 @@ from ..schemas import (
     AssetThin,
     ChecksumsIn,
     ChecksumsOut,
+    DailyStat,
+    DuplicateGroup,
     ExistsDetail,
+    StatsOut,
+    TextMatch,
+    TextSearchResult,
     TimelineBucket,
     UploadResult,
 )
@@ -454,6 +459,133 @@ async def list_hidden(
         .order_by(Asset.taken_at.desc())
     )
     return assets.all()
+
+
+@router.get("/duplicates", response_model=list[DuplicateGroup])
+async def find_duplicates(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Groups of visually near-identical images (dHash hamming distance <= 6)."""
+    assets = (
+        await db.scalars(
+            select(Asset).where(
+                Asset.owner_id == user.id,
+                Asset.asset_type == "image",
+                Asset.phash.is_not(None),
+                Asset.trashed_at.is_(None),
+                Asset.hidden_at.is_(None),
+            )
+        )
+    ).all()
+    n = len(assets)
+    parent = list(range(n))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    hashes = [a.phash & ((1 << 64) - 1) for a in assets]
+    for i in range(n):
+        for j in range(i + 1, n):
+            if (hashes[i] ^ hashes[j]).bit_count() <= 6:
+                parent[find(i)] = find(j)
+
+    groups: dict[int, list[Asset]] = {}
+    for i, a in enumerate(assets):
+        groups.setdefault(find(i), []).append(a)
+
+    result = []
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        members.sort(key=lambda a: a.file_size, reverse=True)
+        wasted = sum(a.file_size for a in members[1:])
+        result.append(
+            DuplicateGroup(
+                assets=[AssetThin.model_validate(a) for a in members], wasted_bytes=wasted
+            )
+        )
+    result.sort(key=lambda g: g.wasted_bytes, reverse=True)
+    return result
+
+
+@router.get("/search/text", response_model=list[TextSearchResult])
+async def search_text(
+    q: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Assets containing OCR'd text matching q, with the matching word boxes."""
+    q = q.strip()
+    if len(q) < 2:
+        return []
+    rows = (
+        await db.execute(
+            select(Asset, AssetText)
+            .join(AssetText, AssetText.asset_id == Asset.id)
+            .where(
+                Asset.owner_id == user.id,
+                Asset.trashed_at.is_(None),
+                Asset.hidden_at.is_(None),
+                AssetText.word.ilike(f"%{q}%"),
+            )
+            .order_by(Asset.taken_at.desc())
+            .limit(2000)
+        )
+    ).all()
+    by_asset: dict = {}
+    for asset, text in rows:
+        entry = by_asset.setdefault(
+            asset.id,
+            TextSearchResult(asset=AssetThin.model_validate(asset), matches=[]),
+        )
+        if len(entry.matches) < 50:
+            entry.matches.append(TextMatch(word=text.word, x=text.x, y=text.y, w=text.w, h=text.h))
+    return list(by_asset.values())[:200]
+
+
+@router.get("/stats", response_model=StatsOut)
+async def stats(
+    days: int = 365,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    base = [Asset.owner_id == user.id, Asset.trashed_at.is_(None), Asset.hidden_at.is_(None)]
+    totals = (
+        await db.execute(
+            select(
+                func.count(),
+                func.coalesce(func.sum(Asset.file_size), 0),
+                func.count().filter(Asset.asset_type == "image"),
+                func.count().filter(Asset.asset_type == "video"),
+            ).where(*base)
+        )
+    ).one()
+    day = func.to_char(Asset.taken_at, "YYYY-MM-DD")
+    daily_rows = (
+        await db.execute(
+            select(day.label("d"), func.count(), func.coalesce(func.sum(Asset.file_size), 0))
+            .where(*base, Asset.taken_at >= func.now() - text_interval(days))
+            .group_by(day)
+            .order_by(day)
+        )
+    ).all()
+    return StatsOut(
+        total_count=totals[0],
+        total_bytes=totals[1],
+        image_count=totals[2],
+        video_count=totals[3],
+        daily=[DailyStat(date=r[0], count=r[1], bytes=r[2]) for r in daily_rows],
+    )
+
+
+def text_interval(days: int):
+    from sqlalchemy import text as sa_text
+
+    return sa_text(f"interval '{max(1, min(days, 3650))} days'")
 
 
 @router.get("/trash", response_model=list[AssetThin])

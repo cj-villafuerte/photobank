@@ -58,6 +58,38 @@ export interface UploadResult {
   asset_id: string | null;
 }
 
+export interface DuplicateGroup {
+  assets: AssetThin[];
+  wasted_bytes: number;
+}
+
+export interface TextMatch {
+  word: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface TextSearchResult {
+  asset: AssetThin;
+  matches: TextMatch[];
+}
+
+export interface DailyStat {
+  date: string;
+  count: number;
+  bytes: number;
+}
+
+export interface Stats {
+  total_count: number;
+  total_bytes: number;
+  image_count: number;
+  video_count: number;
+  daily: DailyStat[];
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -115,6 +147,10 @@ export const api = {
   unhide: (asset_ids: string[]) =>
     request<void>("/api/assets/unhide", { method: "POST", body: JSON.stringify({ asset_ids }) }),
   hidden: () => request<AssetThin[]>("/api/hidden"),
+  duplicates: () => request<DuplicateGroup[]>("/api/duplicates"),
+  searchText: (q: string) =>
+    request<TextSearchResult[]>(`/api/search/text?q=${encodeURIComponent(q)}`),
+  stats: (days: number) => request<Stats>(`/api/stats?days=${days}`),
   changePassword: (current_password: string, new_password: string) =>
     request<void>("/api/auth/change-password", {
       method: "POST",

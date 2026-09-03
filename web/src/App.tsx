@@ -10,6 +10,9 @@ import Trash from "./pages/Trash";
 import Admin from "./pages/Admin";
 import Settings from "./pages/Settings";
 import Hidden from "./pages/Hidden";
+import Search from "./pages/Search";
+import Stats from "./pages/Stats";
+import Duplicates from "./pages/Duplicates";
 import { ToastProvider } from "./components/Toast";
 
 const UserContext = createContext<User | null>(null);
@@ -34,6 +37,12 @@ function NavBar({ user }: { user: User }) {
       </NavLink>
       <NavLink to="/albums" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
         Albums
+      </NavLink>
+      <NavLink to="/search" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
+        Search
+      </NavLink>
+      <NavLink to="/stats" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
+        Dashboard
       </NavLink>
       <NavLink to="/trash" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
         Trash
@@ -84,6 +93,9 @@ export default function App() {
           <Route path="/albums" element={<Albums />} />
           <Route path="/albums/:id" element={<AlbumDetail />} />
           <Route path="/trash" element={<Trash />} />
+          <Route path="/search" element={<Search />} />
+          <Route path="/stats" element={<Stats />} />
+          <Route path="/duplicates" element={<Duplicates />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/settings/hidden" element={<Hidden />} />
           {user.is_admin && <Route path="/admin" element={<Admin />} />}

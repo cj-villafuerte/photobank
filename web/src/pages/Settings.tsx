@@ -85,6 +85,11 @@ export default function Settings() {
         </button>
       </form>
 
+      <h2 className="settings-heading">Storage</h2>
+      <Link to="/duplicates">
+        <button style={{ width: "100%" }}>🧹 Find duplicate photos</button>
+      </Link>
+
       <div style={{ height: 48 }} />
       <hr style={{ border: "none", borderTop: "1px solid var(--border)" }} />
       <div style={{ height: 16 }} />

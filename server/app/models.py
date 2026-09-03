@@ -69,6 +69,8 @@ class Asset(Base):
     trashed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     thumb_status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    phash: Mapped[int | None] = mapped_column(BigInteger)  # dHash for near-duplicate detection
+    ocr_status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
     live_video_path: Mapped[str | None] = mapped_column(Text)  # Live Photo companion video
 
     @property
@@ -77,6 +79,23 @@ class Asset(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class AssetText(Base):
+    """One OCR'd word with its position, normalized 0-1 to the preview image."""
+
+    __tablename__ = "asset_texts"
+    __table_args__ = (Index("ix_asset_texts_asset", "asset_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
+    )
+    word: Mapped[str] = mapped_column(Text, nullable=False)
+    x: Mapped[float] = mapped_column(Float, nullable=False)
+    y: Mapped[float] = mapped_column(Float, nullable=False)
+    w: Mapped[float] = mapped_column(Float, nullable=False)
+    h: Mapped[float] = mapped_column(Float, nullable=False)
 
 
 class Album(Base):

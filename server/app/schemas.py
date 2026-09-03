@@ -128,6 +128,38 @@ class ChecksumsOut(BaseModel):
     details: list[ExistsDetail] = []
 
 
+class DuplicateGroup(BaseModel):
+    assets: list[AssetThin]
+    wasted_bytes: int
+
+
+class TextMatch(BaseModel):
+    word: str
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+class TextSearchResult(BaseModel):
+    asset: AssetThin
+    matches: list[TextMatch]
+
+
+class DailyStat(BaseModel):
+    date: str
+    count: int
+    bytes: int
+
+
+class StatsOut(BaseModel):
+    total_count: int
+    total_bytes: int
+    image_count: int
+    video_count: int
+    daily: list[DailyStat]
+
+
 class AdminUserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
