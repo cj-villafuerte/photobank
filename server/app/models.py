@@ -109,7 +109,11 @@ class AssetText(Base):
     __tablename__ = "asset_texts"
     __table_args__ = (Index("ix_asset_texts_asset", "asset_id"),)
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # SQLite only auto-numbers an exact INTEGER PRIMARY KEY, so BIGINT there would
+    # insert NULL ids; keep BIGINT on Postgres, INTEGER on SQLite.
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
     asset_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
     )

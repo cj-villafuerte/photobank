@@ -6,6 +6,7 @@ import logging
 import mimetypes
 import os
 import shutil
+import subprocess
 import uuid
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -26,6 +27,10 @@ VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".3gp"}
 
 THUMB_SIZE = 320
 PREVIEW_SIZE = 1440
+
+# keep helper processes from flashing console windows when run from the desktop app
+NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+
 
 @lru_cache
 def ffbin(name: str) -> str:
@@ -86,6 +91,7 @@ async def run_ocr(preview: Path, work_dir: Path) -> list[dict]:
             tess, str(png), "stdout", "tsv",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
+            **NO_WINDOW,
         )
         out, _ = await proc.communicate()
         if proc.returncode != 0:
@@ -210,6 +216,7 @@ async def extract_video_metadata(path: Path) -> dict:
         str(path),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
+        **NO_WINDOW,
     )
     out, _ = await proc.communicate()
     if proc.returncode != 0 or not out:
@@ -285,6 +292,7 @@ async def _is_hdr_video(path: Path) -> bool:
         "-show_entries", "stream=color_transfer", "-of", "csv=p=0", str(path),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
+        **NO_WINDOW,
     )
     out, _ = await proc.communicate()
     return out.decode(errors="ignore").strip() in ("smpte2084", "arib-std-b67")
@@ -303,6 +311,7 @@ async def _generate_video_thumbs(original: Path, out_dir: Path) -> None:
             *tonemap, "-frames:v", "1", str(frame),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
+            **NO_WINDOW,
         )
         await proc.communicate()
         if proc.returncode == 0 and frame.exists() and frame.stat().st_size > 0:
@@ -405,10 +414,14 @@ class ThumbnailWorker:
                             db.add_all(
                                 AssetText(asset_id=asset.id, **word) for word in words
                             )
+                            await db.flush()  # surface insert errors here, not at commit
                             asset.ocr_status = "done"
                         except Exception:
                             log.exception("ocr failed: %s", asset.id)
-                            asset.ocr_status = "failed"
+                            await db.rollback()
+                            asset = await db.get(Asset, asset_id)
+                            if asset is not None:
+                                asset.ocr_status = "failed"
             await db.commit()
 
 
