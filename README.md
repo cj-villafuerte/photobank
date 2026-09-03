@@ -110,6 +110,10 @@ log in, grant photo access ("All Photos"). Backups run while the app is open.
 
 **Android:** `flutter build apk` in `mobile/` produces an installable APK directly.
 
+**TestFlight / App Store:** see [mobile/TESTFLIGHT.md](mobile/TESTFLIGHT.md) - the
+*TestFlight* GitHub Actions workflow signs and uploads a build from an App Store Connect
+API key; the doc also lists what App Review needs (a reachable demo server, mostly).
+
 ## Desktop app
 
 `Photobank.exe` / `Photobank.app` runs the server (SQLite) with a native window and a

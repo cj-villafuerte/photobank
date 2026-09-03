@@ -1,7 +1,9 @@
 name: photobank_mobile
 description: Photobank sync companion - backs up your camera roll to your own server.
 publish_to: "none"
-version: 0.1.0+1
+# build number (+N) is overridden by the TestFlight workflow (run number); for a
+# local upload pick one higher than the last build App Store Connect has seen
+version: 0.2.0+1
 
 environment:
   sdk: ^3.13.0
