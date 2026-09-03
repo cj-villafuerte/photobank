@@ -257,11 +257,20 @@ class SyncService {
     await _save();
   }
 
-  /// Deletes from the DEVICE every asset whose checksum the server confirms
-  /// having right now. Returns the number of photos removed from the phone.
-  Future<int> freeUpSpace() async {
+  /// Backed-up items on the device, optionally only those taken before [before].
+  Future<List<AssetEntity>> backedUp({DateTime? before}) async {
     final assets = await _allAssets();
-    final candidates = assets.where((a) => _synced.containsKey(a.id)).toList();
+    return assets
+        .where((a) =>
+            _synced.containsKey(a.id) && (before == null || a.createDateTime.isBefore(before)))
+        .toList();
+  }
+
+  /// Deletes from the DEVICE every backed-up asset (optionally only those
+  /// taken before [before]) whose checksum the server confirms having right
+  /// now. Returns the number of photos removed from the phone.
+  Future<int> freeUpSpace({DateTime? before}) async {
+    final candidates = await backedUp(before: before);
     if (candidates.isEmpty) return 0;
 
     // re-verify against the server before deleting anything
