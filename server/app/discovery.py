@@ -26,7 +26,9 @@ def _local_ip() -> str:
 
 async def register(port: int) -> tuple[AsyncZeroconf, ServiceInfo] | None:
     try:
-        hostname = socket.gethostname()
+        # macOS returns "Name.local" (or a FQDN); keep only the bare label so the
+        # SRV target "Name.local." is valid and phones can resolve it
+        hostname = socket.gethostname().split(".")[0] or "photobank"
         ip = _local_ip()
         info = ServiceInfo(
             SERVICE_TYPE,
@@ -39,7 +41,10 @@ async def register(port: int) -> tuple[AsyncZeroconf, ServiceInfo] | None:
         azc = AsyncZeroconf()
         await azc.async_register_service(info)
         log.info("mDNS: announcing Photobank at %s:%s", ip, port)
-        status.update({"state": "announcing", "ip": ip, "port": port, "name": hostname})
+        status.update({
+            "state": "announcing", "ip": ip, "port": port, "name": hostname,
+            "instance": info.name, "server": info.server,
+        })
         return azc, info
     except Exception as e:
         log.exception("mDNS registration failed - discovery disabled, server still reachable by IP")

@@ -152,6 +152,7 @@ class SetupPage extends StatefulWidget {
 
 class _SetupPageState extends State<SetupPage> {
   final Map<String, FoundServer> _found = {};
+  final Set<String> _resolving = {}; // seen on the network, address not resolved yet
   BonsoirDiscovery? _discovery;
   bool _manual = false;
   final _url = TextEditingController(text: 'http://192.168.');
@@ -175,8 +176,12 @@ class _SetupPageState extends State<SetupPage> {
         final service = event.service;
         if (service == null || !mounted) return;
         if (event.type == BonsoirDiscoveryEventType.discoveryServiceFound) {
+          setState(() => _resolving.add(service.name));
           service.resolve(discovery.serviceResolver);
+        } else if (event.type == BonsoirDiscoveryEventType.discoveryServiceResolveFailed) {
+          setState(() => _resolving.remove(service.name));
         } else if (event.type == BonsoirDiscoveryEventType.discoveryServiceResolved) {
+          _resolving.remove(service.name);
           final json = service.toJson();
           final port = json['service.port'] ?? json['port'] ?? 8000;
           // prefer the numeric IP from TXT metadata: Dart's HTTP client
@@ -196,7 +201,10 @@ class _SetupPageState extends State<SetupPage> {
             });
           }
         } else if (event.type == BonsoirDiscoveryEventType.discoveryServiceLost) {
-          setState(() => _found.remove(service.name));
+          setState(() {
+            _found.remove(service.name);
+            _resolving.remove(service.name);
+          });
         }
       });
       await discovery.start();
@@ -281,8 +289,12 @@ class _SetupPageState extends State<SetupPage> {
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Text(
-                        'No servers found yet. Make sure the Photobank server is '
-                        'running and this phone is on the same Wi-Fi.',
+                        _resolving.isEmpty
+                            ? 'No servers found yet. Make sure the Photobank server is '
+                              'running and this phone is on the same Wi-Fi.'
+                            : 'Found ${_resolving.length} server${_resolving.length == 1 ? '' : 's'} '
+                              '(${_resolving.join(', ')}) - resolving address…\n'
+                              'If this never completes, use "Enter address manually".',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
