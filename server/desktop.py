@@ -57,7 +57,46 @@ def pick_port(preferred: int) -> int:
     return preferred
 
 
+def _acquire_single_instance() -> bool:
+    """Windows named mutex: returns False if another Photobank is already running."""
+    if os.name != "nt":
+        return True
+    import ctypes
+
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.CreateMutexW(None, False, "Local\\PhotobankDesktopSingleton")
+    already = kernel32.GetLastError() == 183  # ERROR_ALREADY_EXISTS
+    if already:
+        kernel32.CloseHandle(handle)
+        return False
+    global _MUTEX_HANDLE
+    _MUTEX_HANDLE = handle  # keep alive for the process lifetime
+    return True
+
+
+_MUTEX_HANDLE = None
+
+
+def _raise_existing_instance() -> None:
+    """Ask the running instance to show its window, then let this one exit."""
+    try:
+        cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig")) if CONFIG_FILE.is_file() else {}
+    except json.JSONDecodeError:
+        cfg = {}
+    for port in (int(cfg.get("port", 8000)), 8420):
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/desktop/show", method="POST")
+            with urllib.request.urlopen(req, timeout=2):
+                return
+        except Exception:
+            continue
+
+
 def main() -> None:
+    if not _acquire_single_instance():
+        _raise_existing_instance()
+        return
+
     # windowed PyInstaller apps have no console: stdout/stderr are None, which
     # crashes uvicorn's logging setup (isatty on None). Give them a sink and
     # keep real logs in a file next to the config.
@@ -88,8 +127,25 @@ def main() -> None:
     os.environ["HOST"] = "0.0.0.0"
 
     import uvicorn
+    from fastapi import HTTPException, Request
 
     from app.main import app  # noqa: E402  (env is ready now)
+
+    ui = {"window": None}  # filled in once the window exists
+
+    @app.post("/api/desktop/show", include_in_schema=False)
+    async def desktop_show(request: Request):
+        # only this machine may raise the window (a second launch calls this)
+        if request.client is None or request.client.host not in ("127.0.0.1", "::1"):
+            raise HTTPException(status_code=403)
+        w = ui["window"]
+        if w is not None:
+            try:
+                w.show()
+                w.restore()
+            except Exception:
+                pass
+        return {"ok": True}
 
     server = uvicorn.Server(
         uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning", log_config=None)
@@ -129,6 +185,7 @@ def main() -> None:
             "Photobank", url, width=1280, height=850, min_size=(700, 500),
             js_api=DesktopApi(),
         )
+        ui["window"] = window
         tray = _make_tray(window, url)
 
         def on_closing():
