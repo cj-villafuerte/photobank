@@ -49,6 +49,9 @@ void main() {
       'onboarded': true,
     });
 
+    // the workflow re-grants photo access right after `flutter drive` reinstalls the app;
+    // give that a moment so no permission dialog blocks the backup screen
+    await Future<void>.delayed(const Duration(seconds: 4));
     app.main();
     await waitFor(tester, find.text('Backed up')); // stat cards = photo library scanned
     await settle(tester, seconds: 2);

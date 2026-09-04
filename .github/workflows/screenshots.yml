@@ -74,6 +74,11 @@ jobs:
           # the app's own log lines while the drive runs (where did it stall?)
           xcrun simctl spawn "$UDID" log stream --style compact --predicate 'process == "Runner" OR eventMessage CONTAINS "Photobank"' > diag/sim-app.log 2>&1 &
           LOGPID=$!
+          # `flutter drive` reinstalls the app before launching it, which wipes the privacy
+          # grants made above; keep re-granting until the app is up so the photo-permission
+          # dialog never appears (the test waits a few seconds before starting the app)
+          ( for i in $(seq 1 90); do xcrun simctl privacy "$UDID" grant photos "$BUNDLE_ID" >/dev/null 2>&1; xcrun simctl privacy "$UDID" grant photos-add "$BUNDLE_ID" >/dev/null 2>&1; sleep 1; done ) &
+          GRANTPID=$!
           set +e
           flutter drive -v \
             --driver test_driver/integration_test.dart \
@@ -83,7 +88,7 @@ jobs:
             -d "$UDID" > diag/flutter-drive.log 2>&1
           RC=$?
           set -e
-          kill $LOGPID || true
+          kill $GRANTPID $LOGPID 2>/dev/null || true
           xcrun simctl io "$UDID" screenshot diag/simulator-at-end.png || true
           grep -E "saved fastlane|All tests passed|Some tests failed|Exception|Error|error" diag/flutter-drive.log | head -60 || true
           ls -la fastlane/screenshots/en-US 2>/dev/null || echo "no screenshots written"

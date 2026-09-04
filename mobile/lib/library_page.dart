@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show Uint8List, ValueListenable;
 import 'package:flutter/material.dart';
-import 'package:photo_manager/photo_manager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +9,7 @@ import 'package:video_player/video_player.dart';
 
 import 'albums_page.dart' show showAddToAlbumSheet;
 import 'api.dart';
+import 'sync_service.dart' show SyncService;
 import 'theme.dart';
 
 /// Grid thumbnail; shows a "processing" tile while the server has not
