@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'accounts.dart';
 import 'api.dart';
 import 'background.dart';
 import 'albums_page.dart';
@@ -192,6 +193,7 @@ class _SetupPageState extends State<SetupPage> {
   BonsoirDiscovery? _discovery;
   bool _manual = false;
   final _url = TextEditingController(text: 'http://192.168.');
+  List<SavedAccount> _savedServers = []; // one entry per server, most recent first
 
   @override
   void initState() {
@@ -200,6 +202,9 @@ class _SetupPageState extends State<SetupPage> {
     SharedPreferences.getInstance().then((prefs) {
       final saved = prefs.getString('server_url');
       if (saved != null) _url.text = saved;
+    });
+    SavedAccounts.servers().then((s) {
+      if (mounted) setState(() => _savedServers = s);
     });
   }
 
@@ -352,6 +357,19 @@ class _SetupPageState extends State<SetupPage> {
                       onTap: () => _loginTo(s.url, s.name),
                     ),
                   ),
+                // servers this phone has signed in to before - one tap, even when
+                // discovery is slow or the server is somewhere else (VPN)
+                for (final s in _savedServers)
+                  if (!servers.any((f) => SavedAccounts.normalize(f.url) == s.server) && s.server != demoServerUrl)
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.history),
+                        title: Text(s.serverLabel),
+                        subtitle: Text('${s.server}  ·  ${s.email}'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _loginTo(s.server, s.serverLabel),
+                      ),
+                    ),
                 const SizedBox(height: 12),
                 // no server yet? the public demo shows what the app does
                 Card(
@@ -409,6 +427,10 @@ class _LoginSheetState extends State<_LoginSheet> {
   final _password = TextEditingController();
   String? _error;
   bool _busy = false;
+  bool _remember = true;
+  List<SavedAccount> _saved = []; // accounts used on this server before
+
+  bool get _isDemo => widget.api.demo != null;
 
   @override
   void initState() {
@@ -422,8 +444,28 @@ class _LoginSheetState extends State<_LoginSheet> {
     }
     SharedPreferences.getInstance().then((prefs) {
       final saved = prefs.getString('email');
-      if (saved != null && mounted) setState(() => _email.text = saved);
+      if (saved != null && mounted && _email.text.isEmpty) setState(() => _email.text = saved);
     });
+    _loadSaved();
+  }
+
+  Future<void> _loadSaved() async {
+    final list = await SavedAccounts.forServer(widget.api.baseUrl);
+    if (!mounted) return;
+    setState(() {
+      _saved = list;
+      if (list.isNotEmpty && !list.first.hasToken) _email.text = list.first.email;
+    });
+  }
+
+  Future<void> _rememberCurrent(String email) async {
+    if (!_remember || _isDemo || widget.api.token == null) return;
+    await SavedAccounts.remember(SavedAccount(
+      server: SavedAccounts.normalize(widget.api.baseUrl),
+      email: email,
+      token: widget.api.token!,
+      usedAt: DateTime.now(),
+    ));
   }
 
   Future<void> _login() async {
@@ -432,9 +474,11 @@ class _LoginSheetState extends State<_LoginSheet> {
       _error = null;
     });
     try {
-      await widget.api.login(_email.text.trim(), _password.text);
+      final email = _email.text.trim();
+      await widget.api.login(email, _password.text);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('email', _email.text.trim());
+      await prefs.setString('email', email);
+      await _rememberCurrent(email);
       if (mounted) Navigator.pop(context, true);
     } on ApiException catch (e) {
       setState(() => _error = e.message);
@@ -443,6 +487,54 @@ class _LoginSheetState extends State<_LoginSheet> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Tap a saved account: reuse its token if the server still accepts it,
+  /// otherwise fall back to the password with the email filled in.
+  Future<void> _useSaved(SavedAccount account) async {
+    if (!account.hasToken) {
+      setState(() {
+        _email.text = account.email;
+        _error = 'Session expired - enter the password for ${account.email}';
+      });
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    widget.api.token = account.token;
+    try {
+      await widget.api.me(); // proves the token is still good
+      await SavedAccounts.remember(account.copyWith(usedAt: DateTime.now()));
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('email', account.email);
+      if (mounted) Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      widget.api.token = null;
+      if (e.status == 401 || e.status == 403) {
+        await SavedAccounts.invalidateToken(account.server, account.email);
+        await _loadSaved();
+        if (mounted) {
+          setState(() {
+            _email.text = account.email;
+            _error = 'Session expired - enter the password for ${account.email}';
+          });
+        }
+      } else if (mounted) {
+        setState(() => _error = e.message);
+      }
+    } catch (e) {
+      widget.api.token = null;
+      if (mounted) setState(() => _error = 'Could not sign in: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _forget(SavedAccount account) async {
+    await SavedAccounts.forget(account.server, account.email);
+    await _loadSaved();
   }
 
   @override
@@ -466,6 +558,35 @@ class _LoginSheetState extends State<_LoginSheet> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
+          if (_saved.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text('SAVED ON THIS PHONE', style: pbMono(size: 10)),
+            const SizedBox(height: 4),
+            for (final a in _saved)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(child: Text(a.initial)),
+                title: Text(a.email),
+                subtitle: Text(a.hasToken ? 'Tap to continue' : 'Password needed'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Forget this account',
+                  onPressed: _busy ? null : () => _forget(a),
+                ),
+                onTap: _busy ? null : () => _useSaved(a),
+              ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Expanded(child: Divider()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Text('OR SIGN IN', style: pbMono(size: 10)),
+                ),
+                const Expanded(child: Divider()),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
           TextField(
             controller: _email,
@@ -485,6 +606,16 @@ class _LoginSheetState extends State<_LoginSheet> {
             const SizedBox(height: 12),
             Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ],
+          if (!_isDemo)
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text('Remember me on this phone'),
+              subtitle: const Text('Keeps the sign-in (not the password) in the Keychain'),
+              value: _remember,
+              onChanged: (v) => setState(() => _remember = v ?? true),
+            ),
           const SizedBox(height: 16),
           FilledButton(
             onPressed: _busy ? null : _login,
