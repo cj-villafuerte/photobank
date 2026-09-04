@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
-import { isDesktop, localAdminLogin } from "../App";
+import { isDesktop, localAdminLogin, refreshSession } from "../App";
 import { useDemo } from "../demo";
 
 export default function Login() {
@@ -15,6 +15,16 @@ export default function Login() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const demo = useDemo();
+  // desktop "View as member…": a member signs in here and sees their library in this window
+  const [params] = useSearchParams();
+  const asMember = isDesktop() && params.get("as") === "member";
+
+  const openConsole = async () => {
+    if (await localAdminLogin()) {
+      navigate("/console");
+      await refreshSession(qc);
+    }
+  };
 
   // public demo: the shared account is the only account, so fill it in
   useEffect(() => {
@@ -32,8 +42,8 @@ export default function Login() {
     try {
       if (mode === "login") await api.login(email, password);
       else await api.register(email, password, displayName);
-      await qc.invalidateQueries({ queryKey: ["me"] });
-      navigate("/");
+      navigate(asMember ? "/library" : "/");
+      await refreshSession(qc);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
     } finally {
@@ -54,22 +64,19 @@ export default function Login() {
             read-only; anything you upload is removed after {demo.upload_ttl_seconds} seconds.
           </p>
         )}
-        {isDesktop() && (
+        {asMember && (
+          <p className="muted" style={{ fontSize: "0.85rem", textAlign: "center", margin: "4px 0 8px" }}>
+            Sign in with a member's email and password to see their library here, exactly as
+            they see it on their phone or in a browser.
+          </p>
+        )}
+        {isDesktop() && !asMember && (
           <>
             <p className="muted" style={{ fontSize: "0.85rem", textAlign: "center", margin: "4px 0 8px" }}>
               Sign in as a member to view that person's photos. The administrator needs no
               password — this computer is the administrator.
             </p>
-            <button
-              type="button"
-              className="primary"
-              onClick={async () => {
-                if (await localAdminLogin()) {
-                  await qc.invalidateQueries({ queryKey: ["me"] });
-                  navigate("/console");
-                }
-              }}
-            >
+            <button type="button" className="primary" onClick={openConsole}>
               Open the administrator console
             </button>
           </>
@@ -101,16 +108,22 @@ export default function Login() {
         <button className="primary" type="submit" disabled={busy}>
           {busy ? "…" : mode === "login" ? "Log in" : "Create account"}
         </button>
-        {!demo && (
-          <button
-            type="button"
-            onClick={() => {
-              setMode(mode === "login" ? "register" : "login");
-              setError(null);
-            }}
-          >
-            {mode === "login" ? "Need an account? Register" : "Have an account? Log in"}
+        {asMember ? (
+          <button type="button" onClick={openConsole}>
+            Back to the administrator console
           </button>
+        ) : (
+          !demo && (
+            <button
+              type="button"
+              onClick={() => {
+                setMode(mode === "login" ? "register" : "login");
+                setError(null);
+              }}
+            >
+              {mode === "login" ? "Need an account? Register" : "Have an account? Log in"}
+            </button>
+          )
         )}
       </form>
     </div>

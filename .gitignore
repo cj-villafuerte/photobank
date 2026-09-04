@@ -5,6 +5,9 @@ __pycache__/
 web/node_modules/
 web/dist/
 
+# private checklist
+TODO.md
+
 # downloaded by scripts/make_icons.py
 assets/.fontcache/
 

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, User } from "./api";
 import Login from "./pages/Login";
 import Timeline from "./pages/Timeline";
@@ -27,6 +27,17 @@ declare global {
       };
     };
   }
+}
+
+/**
+ * After the session cookie changed (login, logout, switching to the administrator):
+ * drop every cached view and re-read who we are. Not `qc.clear()` - that empties the
+ * cache but does not refetch queries that are still mounted, so `me` would keep
+ * reporting the previous user and the login screen would never appear.
+ */
+export async function refreshSession(qc: QueryClient) {
+  qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" && q.queryKey[0] !== "health" });
+  await qc.resetQueries({ queryKey: ["me"] });
 }
 
 /** Desktop window: become the passwordless local administrator (loopback + secret). */
@@ -85,10 +96,18 @@ function ApiErrorToaster() {
 function NavBar({ user }: { user: User }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const logout = async () => {
+  const logout = async (to = "/login") => {
     await api.logout();
-    qc.clear();
-    navigate("/login");
+    navigate(to);
+    await refreshSession(qc); // me -> 401 -> the login screen renders
+  };
+  // desktop: the member's library shows in this same window, as they see it themselves
+  const viewAsMember = () => logout("/login?as=member");
+  const openConsole = async () => {
+    if (await localAdminLogin()) {
+      navigate("/console");
+      await refreshSession(qc);
+    }
   };
   return (
     <nav className="nav">
@@ -121,15 +140,11 @@ function NavBar({ user }: { user: User }) {
         {user.display_name}
       </NavLink>
       {isDesktop() && user.is_admin ? (
-        <button onClick={() => { api.logout().then(() => { qc.clear(); navigate("/login"); }); }}>
-          View as member…
-        </button>
+        <button onClick={viewAsMember}>View as member…</button>
       ) : isDesktop() ? (
-        <button onClick={async () => { if (await localAdminLogin()) { qc.clear(); navigate("/console"); } }}>
-          Administrator console
-        </button>
+        <button onClick={openConsole}>Administrator console</button>
       ) : (
-        <button onClick={logout}>Log out</button>
+        <button onClick={() => logout()}>Log out</button>
       )}
     </nav>
   );
@@ -145,6 +160,11 @@ export default function App() {
   // desktop window with no session: sign in as the local administrator automatically
   const qcBoot = useQueryClient();
   const [autoTried, setAutoTried] = useState(false);
+  // once anyone has been signed in, an empty session is a deliberate sign-out
+  // ("View as member…", "Log out") - never auto-restore the administrator over it
+  useEffect(() => {
+    if (user) setAutoTried(true);
+  }, [user]);
   useEffect(() => {
     if (!isLoading && !user && isDesktop() && !autoTried) {
       setAutoTried(true);
