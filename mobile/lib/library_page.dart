@@ -1,7 +1,10 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show Uint8List, ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:photo_manager/photo_manager.dart';
+
+import 'sync_service.dart' show SyncService;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,6 +58,14 @@ class _LibraryPageState extends State<LibraryPage> {
   bool _sizeLoading = false;
   Set<String> _collapsed = {}; // month buckets folded up in the date view
 
+  // What the timeline shows: 'all' merges the server with the phone's not-yet-backed-up
+  // photos, 'server' is the server only, 'phone' is the camera roll with a cloud on
+  // everything already backed up.
+  String _source = 'all';
+  List<AssetEntity> _phone = [];
+  Set<String> _synced = {};
+  final Map<String, Future<Uint8List?>> _localThumbs = {};
+
   static const _pageSize = 200;
 
   @override
@@ -62,11 +73,77 @@ class _LibraryPageState extends State<LibraryPage> {
     super.initState();
     SharedPreferences.getInstance().then((p) {
       if (mounted) {
-        setState(() => _collapsed = (p.getStringList('collapsed_months') ?? []).toSet());
+        setState(() {
+          _collapsed = (p.getStringList('collapsed_months') ?? []).toSet();
+          _source = p.getString('library_source') ?? 'all';
+        });
+        _loadPhone();
       }
     });
     _load();
     widget.refresh?.addListener(_reload);
+  }
+
+  Future<void> _setSource(String s) async {
+    setState(() => _source = s);
+    final p = await SharedPreferences.getInstance();
+    await p.setString('library_source', s);
+    if (s != 'server') _loadPhone();
+  }
+
+  /// The camera roll + which of it is already on the server (from the sync records).
+  Future<void> _loadPhone() async {
+    if (_source == 'server') return;
+    try {
+      final perm = await PhotoManager.requestPermissionExtend();
+      if (!(perm.isAuth || perm.hasAccess)) {
+        if (mounted) setState(() => _phone = []);
+        return;
+      }
+      final paths = await PhotoManager.getAssetPathList(type: RequestType.common, onlyAll: true);
+      final list = <AssetEntity>[];
+      if (paths.isNotEmpty) {
+        final all = paths.first;
+        final n = await all.assetCountAsync;
+        for (var i = 0; i < n; i += 500) {
+          list.addAll(await all.getAssetListRange(start: i, end: i + 500));
+        }
+      }
+      final synced = await SyncService.syncedDeviceIds();
+      if (mounted) {
+        setState(() {
+          _phone = list;
+          _synced = synced;
+        });
+      }
+    } catch (_) {
+      // no photo access or plugin hiccup: the server side still shows
+    }
+  }
+
+  Future<Uint8List?> _localThumb(AssetEntity a) =>
+      _localThumbs.putIfAbsent(a.id, () => a.thumbnailDataWithSize(const ThumbnailSize(320, 320)));
+
+  static String _monthKey(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}';
+
+  /// Months to show, newest first, with the server count and the phone items for each.
+  List<_MonthRow> _rows() {
+    final serverCounts = <String, int>{
+      if (_source != 'phone') for (final b in _buckets ?? <TimelineBucket>[]) b.bucket: b.count,
+    };
+    final phoneByMonth = <String, List<AssetEntity>>{};
+    if (_source != 'server' && !_favorites) {
+      for (final a in _phone) {
+        if (_source == 'all' && _synced.contains(a.id)) continue; // shown as its server copy
+        phoneByMonth.putIfAbsent(_monthKey(a.createDateTime), () => []).add(a);
+      }
+    }
+    final keys = <String>{...serverCounts.keys, ...phoneByMonth.keys}.toList()
+      ..sort((a, b) => b.compareTo(a));
+    return [
+      for (final k in keys) _MonthRow(k, serverCounts[k] ?? 0, phoneByMonth[k] ?? const []),
+    ];
   }
 
   @override
@@ -78,6 +155,7 @@ class _LibraryPageState extends State<LibraryPage> {
   /// Re-read the server while keeping what's on screen (no spinner flash).
   Future<void> _reload() async {
     if (!mounted) return;
+    _loadPhone(); // a backup just finished: phone items move over to the server side
     try {
       if (_sort == 'date') {
         final buckets =
@@ -303,45 +381,127 @@ class _LibraryPageState extends State<LibraryPage> {
     }
 
     final buckets = _buckets;
-    if (buckets == null) return const Center(child: CircularProgressIndicator());
-    if (buckets.isEmpty) return const Center(child: Text('The server library is empty.'));
+    if (buckets == null && _source != 'phone') return const Center(child: CircularProgressIndicator());
+
+    final sourceBar = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: SegmentedButton<String>(
+        showSelectedIcon: false,
+        segments: const [
+          ButtonSegment(value: 'all', label: Text('All')),
+          ButtonSegment(value: 'server', icon: Icon(Icons.cloud_done_outlined, size: 16), label: Text('Server')),
+          ButtonSegment(value: 'phone', icon: Icon(Icons.smartphone, size: 16), label: Text('Phone')),
+        ],
+        selected: {_source},
+        onSelectionChanged: (sel) => _setSource(sel.first),
+      ),
+    );
+
+    final rows = _rows();
+    if (rows.isEmpty) {
+      return Column(
+        children: [
+          sortBar,
+          sourceBar,
+          Expanded(
+            child: Center(
+              child: Text(_source == 'phone'
+                  ? 'No photos on this phone (or no photo access).'
+                  : _source == 'server'
+                      ? 'The server library is empty.'
+                      : 'Nothing here yet - back up some photos or upload from the web.'),
+            ),
+          ),
+        ],
+      );
+    }
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.builder(
-        itemCount: buckets.length + 1,
-        itemBuilder: (context, i) => i == 0
-            ? sortBar
-            : _BucketSection(
-                api: widget.api,
-                bucket: buckets[i - 1],
-                label: _monthLabel(buckets[i - 1].bucket),
-                loader: _bucketAssets,
-                collapsed: _collapsed.contains(buckets[i - 1].bucket),
-                onToggle: () => _toggleCollapsed(buckets[i - 1].bucket),
-              ),
+        itemCount: rows.length + 2,
+        itemBuilder: (context, i) {
+          if (i == 0) return sortBar;
+          if (i == 1) return sourceBar;
+          final row = rows[i - 2];
+          return _BucketSection(
+            api: widget.api,
+            bucketKey: row.key,
+            label: _monthLabel(row.key),
+            serverCount: row.serverCount,
+            phoneItems: row.phoneItems,
+            syncedIds: _synced,
+            showCloudBadge: _source != 'server',
+            loader: row.serverCount > 0 ? _bucketAssets : null,
+            localThumb: _localThumb,
+            collapsed: _collapsed.contains(row.key),
+            onToggle: () => _toggleCollapsed(row.key),
+          );
+        },
       ),
     );
   }
 }
 
+class _MonthRow {
+  final String key; // yyyy-MM
+  final int serverCount;
+  final List<AssetEntity> phoneItems;
+  const _MonthRow(this.key, this.serverCount, this.phoneItems);
+}
+
+/// One tile in a merged month: either a server asset or a photo that is only on the phone.
+class _GridItem {
+  final RemoteAsset? remote;
+  final AssetEntity? local;
+  final DateTime when;
+  const _GridItem.remote(RemoteAsset a)
+      : remote = a,
+        local = null,
+        when = a.takenAt;
+  _GridItem.local(AssetEntity a)
+      : remote = null,
+        local = a,
+        when = a.createDateTime;
+}
+
 class _BucketSection extends StatelessWidget {
   final PhotobankApi api;
-  final TimelineBucket bucket;
+  final String bucketKey;
   final String label;
-  final Future<List<RemoteAsset>> Function(String) loader;
+  final int serverCount;
+  final List<AssetEntity> phoneItems;
+  final Set<String> syncedIds;
+  final bool showCloudBadge; // false in the server-only view (every tile would carry one)
+  final Future<List<RemoteAsset>> Function(String)? loader; // null: nothing from the server
+  final Future<Uint8List?> Function(AssetEntity) localThumb;
   final bool collapsed;
   final VoidCallback onToggle;
   const _BucketSection({
     required this.api,
-    required this.bucket,
+    required this.bucketKey,
     required this.label,
+    required this.serverCount,
+    required this.phoneItems,
+    required this.syncedIds,
+    required this.showCloudBadge,
     required this.loader,
+    required this.localThumb,
     required this.collapsed,
     required this.onToggle,
   });
 
+  static const _badgeShadow = [Shadow(blurRadius: 4)];
+
+  Widget _cloud(bool synced) => Positioned(
+        right: 4,
+        bottom: 4,
+        child: Icon(synced ? Icons.cloud_done : Icons.smartphone,
+            size: 15, color: Colors.white, shadows: _badgeShadow),
+      );
+
   @override
   Widget build(BuildContext context) {
+    final total = serverCount + phoneItems.length;
     final header = InkWell(
       onTap: onToggle,
       child: Padding(
@@ -349,8 +509,7 @@ class _BucketSection extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: Text('$label  ·  ${bucket.count}',
-                  style: Theme.of(context).textTheme.titleMedium),
+              child: Text('$label  ·  $total', style: Theme.of(context).textTheme.titleMedium),
             ),
             Icon(collapsed ? Icons.expand_more : Icons.expand_less,
                 color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -364,7 +523,7 @@ class _BucketSection extends StatelessWidget {
       children: [
         header,
         FutureBuilder<List<RemoteAsset>>(
-          future: loader(bucket.bucket),
+          future: loader == null ? Future.value(const <RemoteAsset>[]) : loader!(bucketKey),
           builder: (context, snap) {
             if (snap.hasError) {
               return const Padding(
@@ -372,49 +531,82 @@ class _BucketSection extends StatelessWidget {
                 child: Text('Failed to load this month.'),
               );
             }
-            final assets = snap.data;
-            if (assets == null) {
+            final remote = snap.data;
+            if (remote == null) {
               return const Padding(
                 padding: EdgeInsets.all(24),
                 child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
               );
             }
+            // one chronological grid: server copies and phone-only photos together
+            final items = <_GridItem>[
+              for (final a in remote) _GridItem.remote(a),
+              for (final a in phoneItems) _GridItem.local(a),
+            ]..sort((x, y) => y.when.compareTo(x.when));
             return GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 4),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 4, crossAxisSpacing: 2, mainAxisSpacing: 2),
-              itemCount: assets.length,
+              itemCount: items.length,
               itemBuilder: (context, i) {
-                final a = assets[i];
+                final item = items[i];
+                final a = item.remote;
+                if (a != null) {
+                  return GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AssetViewer(api: api, assets: remote, initialIndex: remote.indexOf(a)),
+                      ),
+                    ),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        thumbTile(api, a),
+                        if (a.assetType == 'video')
+                          const Positioned(
+                            right: 4, top: 4,
+                            child: Icon(Icons.play_circle_fill, size: 18, shadows: _badgeShadow),
+                          ),
+                        if (a.hasLiveVideo)
+                          const Positioned(
+                            left: 4, top: 4,
+                            child: Icon(Icons.motion_photos_on, size: 16, shadows: _badgeShadow),
+                          ),
+                        if (a.isFavorite)
+                          const Positioned(
+                            left: 4, bottom: 4,
+                            child: Icon(Icons.favorite, size: 14, color: PbColors.accent, shadows: _badgeShadow),
+                          ),
+                        if (showCloudBadge) _cloud(true),
+                      ],
+                    ),
+                  );
+                }
+                final local = item.local!;
+                final synced = syncedIds.contains(local.id);
                 return GestureDetector(
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => AssetViewer(api: api, assets: assets, initialIndex: i),
-                    ),
+                    MaterialPageRoute(builder: (_) => _LocalPhotoViewer(entity: local, synced: synced)),
                   ),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      thumbTile(api, a),
-                      if (a.assetType == 'video')
+                      FutureBuilder<Uint8List?>(
+                        future: localThumb(local),
+                        builder: (context, s) => s.data == null
+                            ? Container(color: PbColors.surface2)
+                            : Image.memory(s.data!, fit: BoxFit.cover, gaplessPlayback: true),
+                      ),
+                      if (local.type == AssetType.video)
                         const Positioned(
                           right: 4, top: 4,
-                          child: Icon(Icons.play_circle_fill, size: 18, shadows: [Shadow(blurRadius: 4)]),
+                          child: Icon(Icons.play_circle_fill, size: 18, shadows: _badgeShadow),
                         ),
-                      if (a.hasLiveVideo)
-                        const Positioned(
-                          left: 4, top: 4,
-                          child: Icon(Icons.motion_photos_on, size: 16, shadows: [Shadow(blurRadius: 4)]),
-                        ),
-                      if (a.isFavorite)
-                        const Positioned(
-                          left: 4, bottom: 4,
-                          child: Icon(Icons.favorite, size: 14, color: PbColors.accent,
-                              shadows: [Shadow(blurRadius: 4)]),
-                        ),
+                      _cloud(synced),
                     ],
                   ),
                 );
@@ -423,6 +615,69 @@ class _BucketSection extends StatelessWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+/// A photo that lives only on the phone (or is shown from the phone side): big preview
+/// plus its backup state. Full playback and editing happen on the server copy.
+class _LocalPhotoViewer extends StatelessWidget {
+  final AssetEntity entity;
+  final bool synced;
+  const _LocalPhotoViewer({required this.entity, required this.synced});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        flexibleSpace: const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0x66000000), Color(0x00000000)],
+            ),
+          ),
+        ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(synced ? Icons.cloud_done : Icons.smartphone, size: 18, color: Colors.white),
+            const SizedBox(width: 8),
+            Text(synced ? 'Backed up' : 'Only on this phone',
+                style: const TextStyle(color: Colors.white, fontSize: 15)),
+          ],
+        ),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: Center(
+              child: FutureBuilder<Uint8List?>(
+                future: entity.thumbnailDataWithSize(const ThumbnailSize(2000, 2000)),
+                builder: (context, s) => s.data == null
+                    ? const CircularProgressIndicator(strokeWidth: 2)
+                    : InteractiveViewer(maxScale: 5, child: Image.memory(s.data!, fit: BoxFit.contain)),
+              ),
+            ),
+          ),
+          if (!synced)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+              child: Text(
+                'Not on the server yet. Run a backup from the Backup tab to send it there.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

@@ -45,6 +45,19 @@ class SyncService {
 
   SyncService(this.api);
 
+  /// Device asset ids this phone has backed up (as recorded by the last sync),
+  /// for screens that don't own a SyncService - e.g. the merged Library.
+  static Future<Set<String>> syncedDeviceIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('synced_v1');
+    if (raw == null) return {};
+    try {
+      return (jsonDecode(raw) as Map).keys.cast<String>().toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
     final raw = _prefs!.getString('synced_v1');

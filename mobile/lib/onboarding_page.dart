@@ -20,27 +20,29 @@ class _Step {
 }
 
 const _steps = [
-  _Step('01  YOUR SERVER',
+  _Step('01  YOUR OWN SERVER',
       'Your photos stay on your computer.',
-      'Photobank runs on your own PC or Mac. This app finds it automatically on your Wi-Fi - '
-      'no cloud, no account with us.'),
-  _Step('02  BACKUP',
-      'Back up the camera roll.',
-      'Tap Back up on the Backup tab. Every photo and video is checked by fingerprint, so nothing '
-      'uploads twice. Turn on Background backup to let it run while the phone charges.'),
-  _Step('03  FREE UP SPACE',
-      'Free space only when it is safe.',
-      'Free up space removes photos from the phone that the server confirms it holds - each one is '
-      'verified first. Choose how far back to keep in Settings, and let it run automatically if you like.'),
-  _Step('04  LIBRARY',
-      'Everything, from anywhere at home.',
-      'The Library tab shows the whole server: by date or by size, albums, favorites, Live Photos. '
-      'Search finds text inside photos. Save anything back to the phone with one tap.'),
-  _Step('05  SETTINGS',
-      'You are in control.',
-      'Retention window, background backup, reminders, trash, and the app data on this phone '
-      'all live in Settings. Hidden photos are there too - pull up past the end of the list. '
-      'You can show this tour again from there.'),
+      'Photobank runs on your own PC or Mac and this app finds it on your Wi-Fi. No cloud, no '
+      'subscription, no account with anyone but yourself.'),
+  _Step('02  BACK UP',
+      'One tap, then it takes care of itself.',
+      'Tap Back up and every photo and video goes to your server, checked by fingerprint so nothing '
+      'uploads twice. Turn on Background backup and it continues while the phone charges.'),
+  _Step('03  ROOM ON THE PHONE',
+      'You choose how long photos stay on the phone.',
+      'Keep the last month, the last year, or everything - your call, in Settings > Phone storage. '
+      'Free up space then removes only photos the server has already confirmed it holds, and you '
+      'approve the exact count first. Nothing is ever deleted from the phone without that.'),
+  _Step('04  ONE LIBRARY',
+      'Phone and server, side by side.',
+      'The Library shows both together, month by month. A cloud means the photo is safe on the '
+      'server; a phone icon means it is only on this phone. Switch to Server or Phone to see one '
+      'side, and search to find words inside your photos - signs, receipts, screenshots.'),
+  _Step('05  THE REST',
+      'Everything else is in Settings.',
+      'Reminders, trash, and what this app stores on the phone. Technical details sit under '
+      'Advanced. Hidden photos are there too - pull up past the end of the list. You can open '
+      'this tour again any time.'),
 ];
 
 class _OnboardingPageState extends State<OnboardingPage> {
