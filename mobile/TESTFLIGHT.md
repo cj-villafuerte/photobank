@@ -9,7 +9,7 @@ Two channels, in this order:
 ## One-time setup in App Store Connect
 
 1. **Bundle ID** - developer.apple.com > Certificates, Identifiers & Profiles > Identifiers >
-   `+` > App IDs > App. Bundle ID `com.neodata.photobank` (explicit). No capabilities need
+   `+` > App IDs > App. Bundle ID `com.cjvillafuerte.photobank` (explicit). No capabilities need
    ticking: background fetch and Bonjour are Info.plist keys, not entitlements.
 2. **App record** - appstoreconnect.apple.com > Apps > `+`. Name (check it's free; "Photobank"
    probably isn't - "Photobank by CJ Villafuerte" works), primary language, bundle ID from step 1,

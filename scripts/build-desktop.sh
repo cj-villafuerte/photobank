@@ -17,7 +17,7 @@ pip install --quiet --disable-pip-version-check -r requirements.txt pyinstaller 
 echo "== Freezing Photobank =="
 EXTRA=()
 if [[ "$(uname)" == "Darwin" ]]; then
-  EXTRA+=(--osx-bundle-identifier com.neodata.photobank.desktop --icon "$ROOT/assets/icon/photobank.icns")
+  EXTRA+=(--osx-bundle-identifier com.cjvillafuerte.photobank.desktop --icon "$ROOT/assets/icon/photobank.icns")
 fi
 pyinstaller --noconfirm --clean --onedir --windowed \
   --name Photobank \

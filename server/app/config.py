@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     demo_mode: bool = False
     demo_email: str = "demo@photobank.app"
     demo_password: str = "photobank-demo"
-    demo_upload_ttl_seconds: int = 5
+    demo_upload_ttl_seconds: int = 60
     demo_max_uploads: int = 100  # live uploads at once, across every user
     demo_max_upload_mb: int = 12  # per file
     demo_max_total_upload_mb: int = 300  # live upload bytes, across every user
