@@ -142,9 +142,28 @@ class ApiException implements Exception {
   String toString() => 'ApiException($status): $message';
 }
 
+/// Served by /api/health when the server is the public demo: one shared account,
+/// a read-only sample library, uploads removed after a few seconds.
+class DemoInfo {
+  final String email;
+  final String password;
+  final int uploadTtlSeconds;
+  final int maxUploads;
+  final int maxUploadMb;
+  const DemoInfo(this.email, this.password, this.uploadTtlSeconds, this.maxUploads, this.maxUploadMb);
+  factory DemoInfo.fromJson(Map<String, dynamic> j) => DemoInfo(
+        j['email'] as String? ?? '',
+        j['password'] as String? ?? '',
+        (j['upload_ttl_seconds'] as num?)?.toInt() ?? 5,
+        (j['max_uploads'] as num?)?.toInt() ?? 100,
+        (j['max_upload_mb'] as num?)?.toInt() ?? 12,
+      );
+}
+
 class PhotobankApi {
   String baseUrl; // e.g. http://192.168.1.23:8000
   String? token;
+  DemoInfo? demo; // set by checkHealth(); non-null on the public demo server
 
   PhotobankApi({required this.baseUrl, this.token});
 
@@ -159,6 +178,12 @@ class PhotobankApi {
     final res = await http.get(_u('/api/health')).timeout(const Duration(seconds: 8));
     if (res.statusCode != 200) {
       throw ApiException(res.statusCode, 'Server responded but health check failed');
+    }
+    try {
+      final d = (jsonDecode(res.body) as Map<String, dynamic>)['demo'];
+      demo = d is Map<String, dynamic> ? DemoInfo.fromJson(d) : null;
+    } catch (_) {
+      demo = null;
     }
   }
 

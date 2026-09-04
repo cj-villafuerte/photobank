@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { useDemo } from "../demo";
 import { useToast } from "./Toast";
 
 export default function UploadButton() {
@@ -8,6 +9,7 @@ export default function UploadButton() {
   const [progress, setProgress] = useState<string | null>(null);
   const qc = useQueryClient();
   const toast = useToast();
+  const demo = useDemo();
 
   const onFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -31,9 +33,16 @@ export default function UploadButton() {
     const parts = [`${uploaded} uploaded`];
     if (duplicates) parts.push(`${duplicates} duplicate${duplicates > 1 ? "s" : ""} skipped`);
     if (failed) parts.push(`${failed} failed`);
+    if (demo && uploaded) parts.push(`gone again in ${demo.upload_ttl_seconds} s (demo)`);
     toast(parts.join(", "), failed > 0);
-    qc.invalidateQueries({ queryKey: ["buckets"] });
-    qc.invalidateQueries({ queryKey: ["bucket"] });
+    const refresh = () => {
+      qc.invalidateQueries({ queryKey: ["buckets"] });
+      qc.invalidateQueries({ queryKey: ["bucket"] });
+      qc.invalidateQueries({ queryKey: ["sizelist"] });
+    };
+    refresh();
+    // demo server purges uploads shortly after; make them leave the grid too
+    if (demo && uploaded) window.setTimeout(refresh, (demo.upload_ttl_seconds + 2) * 1000);
   };
 
   return (
@@ -42,7 +51,7 @@ export default function UploadButton() {
         ref={inputRef}
         type="file"
         multiple
-        accept="image/*,video/*,.heic,.heif"
+        accept={demo ? "image/*,.heic,.heif" : "image/*,video/*,.heic,.heif"}
         style={{ display: "none" }}
         onChange={(e) => onFiles(e.target.files)}
       />

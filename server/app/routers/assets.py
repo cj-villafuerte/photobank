@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import ingest, storage
+from .. import demo, ingest, storage
 from ..auth import get_current_user
 from ..config import settings
 from ..db import get_db
@@ -74,6 +74,9 @@ async def upload_asset(
     asset_type = ingest.classify(ext)
     if asset_type is None:
         raise HTTPException(status_code=415, detail=f"Unsupported file type: {ext or 'unknown'}")
+    demo.check_upload_type(asset_type)
+    await demo.check_upload_capacity(db)
+    size_limit = demo.max_upload_bytes()
 
     # stream to temp while hashing
     tmp = storage.tmp_path()
@@ -84,6 +87,11 @@ async def upload_asset(
             while chunk := await file.read(1024 * 1024):
                 sha.update(chunk)
                 size += len(chunk)
+                if size_limit is not None and size > size_limit:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"The demo server takes files up to {settings.demo_max_upload_mb} MB",
+                    )
                 out.write(chunk)
         if size == 0:
             raise HTTPException(status_code=400, detail="Empty file")
@@ -174,7 +182,8 @@ async def assets_exist(
     db: AsyncSession = Depends(get_db),
 ):
     """Bulk dedup check so the mobile app can skip uploading photos the server already has."""
-    if not body.checksums:
+    if not body.checksums or demo.enabled():
+        # demo: never confirm holding anything - phones must not free up space against it
         return ChecksumsOut(existing=[])
     rows = (
         await db.execute(
@@ -203,7 +212,7 @@ async def match_assets(
     """Cheap reconciliation for the mobile app: which device items are probably
     already on the server, matched by filename + capture time + dimensions
     (no hashing). Clients must still hash-verify before deleting anything."""
-    if not body.items:
+    if not body.items or demo.enabled():
         return MatchOut(matches=[])
     names = {i.name for i in body.items}
     rows = (
@@ -282,7 +291,7 @@ async def list_assets(
     return (await db.scalars(stmt)).all()
 
 
-@router.post("/assets/{asset_id}/reveal", status_code=204)
+@router.post("/assets/{asset_id}/reveal", status_code=204, dependencies=[Depends(demo.block_in_demo)])
 async def reveal_in_explorer(
     asset_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -301,7 +310,7 @@ async def reveal_in_explorer(
         subprocess.Popen(["xdg-open", str(path.parent)])
 
 
-@router.post("/assets/{asset_id}/live-video", response_model=AssetOut)
+@router.post("/assets/{asset_id}/live-video", response_model=AssetOut, dependencies=[Depends(demo.block_in_demo)])
 async def attach_live_video(
     asset_id: uuid.UUID,
     file: UploadFile,
@@ -471,6 +480,7 @@ async def trash_asset(
     db: AsyncSession = Depends(get_db),
 ):
     asset = await _get_owned_asset(asset_id, user, db)
+    demo.guard_seed(asset, "delete")
     asset.trashed_at = datetime.now(timezone.utc)
     await db.commit()
 
@@ -482,6 +492,7 @@ async def permanent_delete(
     db: AsyncSession = Depends(get_db),
 ):
     asset = await _get_owned_asset(asset_id, user, db)
+    demo.guard_seed(asset, "delete")
     storage.delete_asset_files(asset.owner_id, asset.id, asset.file_path, asset.live_video_path)
     await db.delete(asset)
     await db.commit()
@@ -495,7 +506,7 @@ async def hide_assets(
 ):
     await db.execute(
         update(Asset)
-        .where(Asset.owner_id == user.id, Asset.id.in_(body.asset_ids))
+        .where(Asset.owner_id == user.id, Asset.id.in_(body.asset_ids), demo.mutable())
         .values(hidden_at=datetime.now(timezone.utc))
     )
     await db.commit()
@@ -509,7 +520,7 @@ async def unhide_assets(
 ):
     await db.execute(
         update(Asset)
-        .where(Asset.owner_id == user.id, Asset.id.in_(body.asset_ids))
+        .where(Asset.owner_id == user.id, Asset.id.in_(body.asset_ids), demo.mutable())
         .values(hidden_at=None)
     )
     await db.commit()
@@ -675,7 +686,7 @@ async def restore_from_trash(
 ):
     await db.execute(
         update(Asset)
-        .where(Asset.owner_id == user.id, Asset.id.in_(body.asset_ids))
+        .where(Asset.owner_id == user.id, Asset.id.in_(body.asset_ids), demo.mutable())
         .values(trashed_at=None)
     )
     await db.commit()

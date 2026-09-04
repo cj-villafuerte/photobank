@@ -252,6 +252,8 @@ class _SettingsPageState extends State<SettingsPage> {
               subtitle: const Text('Change passwords and manage users in the web app'),
             ),
           ),
+          // the public demo server never removes anything from the phone
+          if (widget.api.demo == null) ...[
           const SizedBox(height: 20),
           Text('Phone storage', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 8),
@@ -333,6 +335,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
           ),
+          ],
           const SizedBox(height: 20),
           Text('Server storage', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 8),

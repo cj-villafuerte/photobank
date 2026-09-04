@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// NeoData "Brief" theme tokens - keep in sync with THEME.md and web/src/index.css.
+/// "Brief" theme tokens - keep in sync with THEME.md and web/src/index.css.
 /// Ink on paper, one accent, hairlines instead of fills.
 abstract class PbColors {
   static const paper = Color(0xFFFFFFFF);

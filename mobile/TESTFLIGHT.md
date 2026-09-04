@@ -12,7 +12,7 @@ Two channels, in this order:
    `+` > App IDs > App. Bundle ID `com.neodata.photobank` (explicit). No capabilities need
    ticking: background fetch and Bonjour are Info.plist keys, not entitlements.
 2. **App record** - appstoreconnect.apple.com > Apps > `+`. Name (check it's free; "Photobank"
-   probably isn't - "Photobank by Neodata" works), primary language, bundle ID from step 1,
+   probably isn't - "Photobank by CJ Villafuerte" works), primary language, bundle ID from step 1,
    SKU `photobank-ios`.
 3. **API key** - App Store Connect > Users and Access > Integrations > App Store Connect API >
    Team Keys > Generate. Role **App Manager** (needed for Xcode's cloud-managed signing

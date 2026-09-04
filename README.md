@@ -20,7 +20,10 @@ Grab the latest build from **[Releases](https://github.com/cj-villafuerte/photob
 Optional helpers for video thumbnails and text search: `winget install Gyan.FFmpeg` +
 `winget install UB-Mannheim.TesseractOCR` (Windows) or `brew install ffmpeg tesseract` (macOS).
 
-Free and open source (MIT), made by **Neodata**. No telemetry — see [PRIVACY.md](PRIVACY.md).
+Free and open source (MIT), made by **CJ Villafuerte**. No telemetry — see [PRIVACY.md](PRIVACY.md).
+
+**Public demo:** the server has a demo mode (shared account, read-only sample library,
+uploads that self-destruct) and ships with a `Dockerfile` — see [DEMO.md](DEMO.md).
 
 ---
 

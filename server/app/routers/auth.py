@@ -14,6 +14,7 @@ from ..auth import (
     set_session_cookie,
     verify_password,
 )
+from .. import demo
 from ..config import settings
 from ..db import get_db
 from ..models import User
@@ -24,6 +25,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/register", response_model=UserOut, status_code=201)
 async def register(body: RegisterIn, response: Response, db: AsyncSession = Depends(get_db)):
+    if demo.enabled():
+        raise HTTPException(status_code=403, detail="The demo server has one shared account - use the prefilled login")
     user_count = await db.scalar(select(func.count(User.id)))
     if user_count > 0 and not settings.allow_registration:
         raise HTTPException(status_code=403, detail="Registration is disabled")
@@ -88,7 +91,7 @@ async def me(user: User = Depends(get_current_user)):
     return user
 
 
-@router.post("/change-password", status_code=204)
+@router.post("/change-password", status_code=204, dependencies=[Depends(demo.block_in_demo)])
 async def change_password(
     body: PasswordChange,
     user: User = Depends(get_current_user),

@@ -1,4 +1,4 @@
-# Photobank Theme — NeoData "Brief"
+# Photobank Theme — "Brief"
 
 Ink on paper. One accent. Everything else is type and hairlines.
 Source of truth for `web/src/index.css` (web + desktop app) and `mobile/lib/theme.dart`.
@@ -45,7 +45,7 @@ Mobile: title 28, section 20, body 15, eyebrow 11, tag 10.
 - Photo grid: square, cover-cropped, 2px gutters; selection = 2px `ink` inset outline + ink check;
   badges = `ink` at 80% with `paper` mono text; favorite = accent rounded square (the logo period).
 - Eyebrow pattern: `01  PROFILE` — number in accent, label in faint, both mono medium.
-- Wordmark: `Photobank.` display 700, period in accent; tag `BY NEODATA` mono faint.
+- Wordmark: `Photobank.` display 700, period in accent; tag `BY CJ VILLAFUERTE` mono faint.
 
 ## Deviation for apps
 The brief's "no icons" rule is for compositions; touch UIs keep a minimal functional set

@@ -44,10 +44,43 @@ export async function localAdminLogin(): Promise<boolean> {
     return false;
   }
 }
-import { ToastProvider } from "./components/Toast";
+import { ToastProvider, useToast } from "./components/Toast";
+import { useDemo } from "./demo";
 
 const UserContext = createContext<User | null>(null);
 export const useUser = () => useContext(UserContext)!;
+
+/** Public demo server: say so, and say what the rules are. */
+function DemoBanner() {
+  const demo = useDemo();
+  if (!demo) return null;
+  return (
+    <div className="demo-banner">
+      <span className="mono">Demo server</span>
+      <span>
+        The sample library is read-only · your uploads (images up to {demo.max_upload_mb} MB,{" "}
+        {demo.max_uploads} at a time) are removed after {demo.upload_ttl_seconds} s
+      </span>
+    </div>
+  );
+}
+
+/** On the demo server, refusals (read-only library, limits) come back as 403/413/415/429
+ *  from many places; one listener turns them into toasts instead of silent failures. */
+function ApiErrorToaster() {
+  const demo = useDemo();
+  const toast = useToast();
+  useEffect(() => {
+    if (!demo) return;
+    const onError = (e: Event) => {
+      const d = (e as CustomEvent).detail as { status: number; message: string };
+      if ([403, 413, 415, 429].includes(d.status)) toast(d.message, true);
+    };
+    window.addEventListener("pb:api-error", onError);
+    return () => window.removeEventListener("pb:api-error", onError);
+  }, [demo, toast]);
+  return null;
+}
 
 function NavBar({ user }: { user: User }) {
   const navigate = useNavigate();
@@ -59,7 +92,7 @@ function NavBar({ user }: { user: User }) {
   };
   return (
     <nav className="nav">
-      <span className="brand">Photobank<small>by Neodata</small></span>
+      <span className="brand">Photobank<small>by CJ Villafuerte</small></span>
       {user.is_admin && (
         <NavLink to="/console" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
           Console
@@ -140,6 +173,8 @@ export default function App() {
     <UserContext.Provider value={user}>
       <ToastProvider>
         <NavBar user={user} />
+        <DemoBanner />
+        <ApiErrorToaster />
         <Routes>
           {/* admins on the desktop app land on the Console; everyone else on the library */}
           <Route

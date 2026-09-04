@@ -1,6 +1,6 @@
 # Photobank Privacy Policy
 
-_Photobank is made by Neodata. Last updated: September 3, 2026_
+_Photobank is made by CJ Villafuerte. Last updated: September 4, 2026_
 
 Photobank is self-hosted software. **Your photos, videos, and account data never leave
 devices you control.**

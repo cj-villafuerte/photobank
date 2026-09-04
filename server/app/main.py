@@ -3,12 +3,12 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pillow_heif import register_heif_opener
 
-from . import discovery, storage
+from . import demo, discovery, storage
 from .backup import BackupManager
 from .config import settings
 from .db import IS_SQLITE, SessionLocal, engine
@@ -35,13 +35,22 @@ async def lifespan(app: FastAPI):
     worker = ThumbnailWorker(SessionLocal)
     app.state.thumb_worker = worker
     await worker.start()
+    keeper = None
+    if demo.enabled():
+        settings.allow_registration = False  # the shared demo account is the only account
+        keeper = demo.DemoKeeper(SessionLocal, worker)
+        await keeper.start()
     backups = BackupManager(SessionLocal)
     await backups.load()
     backups.start()
     app.state.backup = backups
-    mdns = await discovery.register(settings.port)
+    mdns = None
+    if not settings.disable_mdns and not demo.enabled():
+        mdns = await discovery.register(settings.port)
     yield
     await discovery.unregister(mdns)
+    if keeper is not None:
+        await keeper.stop()
     await backups.stop()
     await worker.stop()
 
@@ -51,13 +60,14 @@ app = FastAPI(title="Photobank", lifespan=lifespan)
 app.include_router(auth.router)
 app.include_router(assets.router)
 app.include_router(albums.router)
-app.include_router(admin.router)
-app.include_router(backup.router)
+# not offered on the demo server (403 there)
+app.include_router(admin.router, dependencies=[Depends(demo.block_in_demo)])
+app.include_router(backup.router, dependencies=[Depends(demo.block_in_demo)])
 
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "mdns": discovery.status}
+    return {"status": "ok", "mdns": discovery.status, "demo": demo.public_info()}
 
 
 if WEB_DIST.is_dir():

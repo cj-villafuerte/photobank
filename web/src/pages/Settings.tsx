@@ -1,10 +1,34 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../api";
+import { api, ApiError, User } from "../api";
 import { useUser } from "../App";
 import { fmtBytes } from "../components/PhotoGrid";
 import { useToast } from "../components/Toast";
+import { useDemo } from "../demo";
+
+function ProfileCard({ user }: { user: User }) {
+  return (
+    <div className="settings-card">
+      <div className="settings-row">
+        <span className="muted">Name</span>
+        <span>{user.display_name}</span>
+      </div>
+      <div className="settings-row">
+        <span className="muted">Email</span>
+        <span>{user.email}</span>
+      </div>
+      <div className="settings-row">
+        <span className="muted">Role</span>
+        <span>{user.is_admin ? "Admin" : "User"}</span>
+      </div>
+      <div className="settings-row">
+        <span className="muted">Member since</span>
+        <span>{new Date(user.created_at).toLocaleDateString()}</span>
+      </div>
+    </div>
+  );
+}
 
 /** Admin-only: mirror the media library to a folder of the user's choosing. */
 export function RedundancyBackup() {
@@ -237,6 +261,7 @@ export default function Settings() {
   useEffect(() => {
     if (showHidden) hiddenRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [showHidden]);
+  const demo = useDemo();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -262,29 +287,32 @@ export default function Settings() {
     }
   };
 
+  // public demo: profile only - passwords, backups and storage tools are for a server you run
+  if (demo) {
+    return (
+      <div className="page" style={{ maxWidth: 640 }}>
+        <h1>Settings</h1>
+        <h2 className="settings-heading">Profile</h2>
+        <ProfileCard user={user} />
+        <h2 className="settings-heading">Demo server</h2>
+        <div className="settings-card">
+          <p className="muted" style={{ fontSize: "0.85rem" }}>
+            This is the public demo: one shared account, a read-only sample library, and image
+            uploads that are removed after {demo.upload_ttl_seconds} seconds. Password changes,
+            redundancy backups, import/export and the administrator console exist only on a
+            Photobank you run yourself.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page" style={{ maxWidth: 640 }}>
       <h1>Settings</h1>
 
       <h2 className="settings-heading">Profile</h2>
-      <div className="settings-card">
-        <div className="settings-row">
-          <span className="muted">Name</span>
-          <span>{user.display_name}</span>
-        </div>
-        <div className="settings-row">
-          <span className="muted">Email</span>
-          <span>{user.email}</span>
-        </div>
-        <div className="settings-row">
-          <span className="muted">Role</span>
-          <span>{user.is_admin ? "Admin" : "User"}</span>
-        </div>
-        <div className="settings-row">
-          <span className="muted">Member since</span>
-          <span>{new Date(user.created_at).toLocaleDateString()}</span>
-        </div>
-      </div>
+      <ProfileCard user={user} />
 
       <h2 className="settings-heading">Change password</h2>
       <form className="settings-card" onSubmit={changePassword} style={{ gap: 10, display: "flex", flexDirection: "column" }}>

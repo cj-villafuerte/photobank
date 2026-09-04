@@ -1,0 +1,14 @@
+.git
+.github
+mobile
+assets/.fontcache
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.pyc
+server/dist
+server/build
+server/*.spec
+web/dist
+*.md
+.env

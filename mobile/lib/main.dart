@@ -64,6 +64,10 @@ class _RootGateState extends State<RootGate> {
     final token = prefs.getString('token');
     if (url != null && token != null) {
       _api = PhotobankApi(baseUrl: url, token: token);
+      // is this the public demo server? (adapts the UI) - best effort, never blocks long
+      try {
+        await _api!.checkHealth().timeout(const Duration(seconds: 3));
+      } catch (_) {}
     }
     setState(() => _loading = false);
   }
@@ -289,7 +293,7 @@ class _SetupPageState extends State<SetupPage> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 6),
-                Text('BY NEODATA', textAlign: TextAlign.center, style: pbMono(size: 10)),
+                Text('BY CJ VILLAFUERTE', textAlign: TextAlign.center, style: pbMono(size: 10)),
                 const SizedBox(height: 28),
                 Row(
                   children: [
@@ -378,6 +382,13 @@ class _LoginSheetState extends State<_LoginSheet> {
   @override
   void initState() {
     super.initState();
+    final demo = widget.api.demo;
+    if (demo != null) {
+      // public demo server: the shared account is the only account
+      _email.text = demo.email;
+      _password.text = demo.password;
+      return;
+    }
     SharedPreferences.getInstance().then((prefs) {
       final saved = prefs.getString('email');
       if (saved != null && mounted) setState(() => _email.text = saved);
@@ -416,6 +427,14 @@ class _LoginSheetState extends State<_LoginSheet> {
         children: [
           Text('Log in to ${widget.serverLabel}',
               style: Theme.of(context).textTheme.titleLarge),
+          if (widget.api.demo != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Public demo server - the shared account is filled in. The sample library is '
+              'read-only and uploads are removed after a few seconds.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
           const SizedBox(height: 16),
           TextField(
             controller: _email,
@@ -782,33 +801,51 @@ class _SyncPageState extends State<SyncPage> {
                           icon: const Icon(Icons.cloud_upload),
                           label: Padding(
                             padding: const EdgeInsets.all(12),
-                            child: Text(stats.pending == 0
-                                ? 'Everything is backed up'
-                                : 'Back up ${stats.pending} items'),
+                            child: Text(widget.api.demo != null
+                                ? 'Try a backup (newest 25 photos)'
+                                : stats.pending == 0
+                                    ? 'Everything is backed up'
+                                    : 'Back up ${stats.pending} items'),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          onPressed: stats.backedUp == 0 ? null : _freeUpSpace,
-                          icon: const Icon(Icons.cleaning_services),
-                          label: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Text(_retentionMonths == 0
-                                ? 'Free up space (remove all ${stats.backedUp} backed up)'
-                                : 'Free up space (keep last $_retentionMonths mo)'),
+                        if (widget.api.demo == null) ...[
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: stats.backedUp == 0 ? null : _freeUpSpace,
+                            icon: const Icon(Icons.cleaning_services),
+                            label: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Text(_retentionMonths == 0
+                                  ? 'Free up space (remove all ${stats.backedUp} backed up)'
+                                  : 'Free up space (keep last $_retentionMonths mo)'),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          onPressed: stats.backedUp == 0 ? null : _verifyLivePhotos,
-                          icon: const Icon(Icons.motion_photos_on),
-                          label: const Padding(
-                            padding: EdgeInsets.all(12),
-                            child: Text('Verify Live Photos'),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: stats.backedUp == 0 ? null : _verifyLivePhotos,
+                            icon: const Icon(Icons.motion_photos_on),
+                            label: const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: Text('Verify Live Photos'),
+                            ),
                           ),
-                        ),
+                        ] else ...[
+                          // demo server: nothing is ever removed from this phone
+                          const SizedBox(height: 12),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Text(
+                                'Demo server: uploads are removed after '
+                                '${widget.api.demo!.uploadTtlSeconds} seconds and the sample library is '
+                                'read-only. Free up space is off - nothing is deleted from this phone.',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
-                      if (!_syncing && _retentionCandidates > 0) ...[
+                      if (!_syncing && _retentionCandidates > 0 && widget.api.demo == null) ...[
                         const SizedBox(height: 16),
                         Card(
                           child: ListTile(
@@ -823,20 +860,22 @@ class _SyncPageState extends State<SyncPage> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 16),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Background backup'),
-                        subtitle: Text(
-                          _bgLine(),
-                          style: Theme.of(context).textTheme.bodySmall,
+                      if (widget.api.demo == null) ...[
+                        const SizedBox(height: 16),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Background backup'),
+                          subtitle: Text(
+                            _bgLine(),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          value: _bgBackup,
+                          onChanged: (v) async {
+                            setState(() => _bgBackup = v);
+                            await setBackgroundBackupEnabled(v);
+                          },
                         ),
-                        value: _bgBackup,
-                        onChanged: (v) async {
-                          setState(() => _bgBackup = v);
-                          await setBackgroundBackupEnabled(v);
-                        },
-                      ),
+                      ],
                       if (_lastResult != null) ...[
                         const SizedBox(height: 20),
                         Card(
@@ -845,9 +884,13 @@ class _SyncPageState extends State<SyncPage> {
                       ],
                       const SizedBox(height: 20),
                       Text(
-                        'Server: ${widget.api.baseUrl}\n'
-                        'Backups only run while this app is open. Photos are verified '
-                        'on the server before anything is removed from the phone.',
+                        widget.api.demo != null
+                            ? 'Demo server: ${widget.api.baseUrl}\n'
+                              'Each backup sends the newest 25 photos; the server removes them '
+                              'again shortly after. Nothing is removed from this phone.'
+                            : 'Server: ${widget.api.baseUrl}\n'
+                              'Backups only run while this app is open. Photos are verified '
+                              'on the server before anything is removed from the phone.',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],

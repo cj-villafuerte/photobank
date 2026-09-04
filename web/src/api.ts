@@ -108,6 +108,20 @@ export interface BackupState {
   progress: { phase?: string; scanned?: number; copied?: number; bytes?: number; errors?: number };
 }
 
+/** Served by /api/health when the server runs as the public demo. */
+export interface DemoInfo {
+  email: string;
+  password: string;
+  upload_ttl_seconds: number;
+  max_uploads: number;
+  max_upload_mb: number;
+}
+
+export interface Health {
+  status: string;
+  demo: DemoInfo | null;
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -129,6 +143,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* not json */
     }
+    // lets a global listener surface policy refusals (e.g. the demo server's 403s)
+    window.dispatchEvent(
+      new CustomEvent("pb:api-error", { detail: { status: res.status, message: detail, path } })
+    );
     throw new ApiError(res.status, detail);
   }
   if (res.status === 204) return undefined as T;
@@ -136,6 +154,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  health: () => request<Health>("/api/health"),
+
   // auth
   me: () => request<User>("/api/auth/me"),
   login: (email: string, password: string) =>

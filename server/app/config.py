@@ -19,6 +19,20 @@ class Settings(BaseSettings):
     # desktop app only: secret that lets the app's own window sign in as the
     # passwordless local administrator (loopback requests only)
     local_admin_token: str | None = None
+    disable_mdns: bool = False  # containers / cloud hosts: no LAN to announce on
+
+    # Demo server (public instance for App Review and for trying the app): one
+    # shared non-admin account, a seeded read-only sample library, image uploads
+    # that are purged after a few seconds, no admin/backup/password endpoints.
+    demo_mode: bool = False
+    demo_email: str = "demo@photobank.app"
+    demo_password: str = "photobank-demo"
+    demo_upload_ttl_seconds: int = 5
+    demo_max_uploads: int = 100  # live uploads at once, across every user
+    demo_max_upload_mb: int = 12  # per file
+    demo_max_total_upload_mb: int = 300  # live upload bytes, across every user
+    demo_reset_minutes: int = 60  # favorites/albums/hidden on the sample library reset
+    demo_seed_count: int = 36
 
     @property
     def library_dir(self) -> Path:

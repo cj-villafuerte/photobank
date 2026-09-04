@@ -241,6 +241,12 @@ class SyncService {
       ..sort((a, b) => oldestFirst
           ? a.createDateTime.compareTo(b.createDateTime)
           : b.createDateTime.compareTo(a.createDateTime));
+    // public demo server: images only and a handful per run - uploads there are
+    // removed after a few seconds, so a whole camera roll would just loop
+    if (api.demo != null) {
+      todo.removeWhere((a) => a.type != AssetType.image);
+      if (todo.length > 25) todo.removeRange(25, todo.length);
+    }
     var done = 0, uploaded = 0, skipped = 0, failed = 0;
 
     for (final asset in todo) {

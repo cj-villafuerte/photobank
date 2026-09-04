@@ -1,8 +1,9 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import { isDesktop, localAdminLogin } from "../App";
+import { useDemo } from "../demo";
 
 export default function Login() {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -13,6 +14,16 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const demo = useDemo();
+
+  // public demo: the shared account is the only account, so fill it in
+  useEffect(() => {
+    if (demo) {
+      setEmail(demo.email);
+      setPassword(demo.password);
+      setMode("login");
+    }
+  }, [demo]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -35,8 +46,14 @@ export default function Login() {
       <form className="auth-card" onSubmit={submit}>
         <h1>Photobank</h1>
         <div className="mono" style={{ color: "var(--faint)", fontSize: 10, textAlign: "center", marginTop: -4 }}>
-          by Neodata
+          by CJ Villafuerte
         </div>
+        {demo && (
+          <p className="muted" style={{ fontSize: "0.85rem", textAlign: "center", margin: "4px 0 8px" }}>
+            Public demo server — the shared account is filled in. The sample library is
+            read-only; anything you upload is removed after {demo.upload_ttl_seconds} seconds.
+          </p>
+        )}
         {isDesktop() && (
           <>
             <p className="muted" style={{ fontSize: "0.85rem", textAlign: "center", margin: "4px 0 8px" }}>
@@ -84,15 +101,17 @@ export default function Login() {
         <button className="primary" type="submit" disabled={busy}>
           {busy ? "…" : mode === "login" ? "Log in" : "Create account"}
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            setMode(mode === "login" ? "register" : "login");
-            setError(null);
-          }}
-        >
-          {mode === "login" ? "Need an account? Register" : "Have an account? Log in"}
-        </button>
+        {!demo && (
+          <button
+            type="button"
+            onClick={() => {
+              setMode(mode === "login" ? "register" : "login");
+              setError(null);
+            }}
+          >
+            {mode === "login" ? "Need an account? Register" : "Have an account? Log in"}
+          </button>
+        )}
       </form>
     </div>
   );
