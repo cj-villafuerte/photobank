@@ -4,16 +4,17 @@ import 'package:flutter/material.dart';
 
 import 'api.dart';
 
-/// Text-in-photos search (OCR index on the server) with match highlighting.
-class SearchPage extends StatefulWidget {
+/// Text-in-photos search (OCR index on the server), shown inside the Library tab
+/// while a query is typed. Debounces the query and highlights matches in the viewer.
+class LibrarySearch extends StatefulWidget {
   final PhotobankApi api;
-  const SearchPage({super.key, required this.api});
+  final String query;
+  const LibrarySearch({super.key, required this.api, required this.query});
   @override
-  State<SearchPage> createState() => _SearchPageState();
+  State<LibrarySearch> createState() => _LibrarySearchState();
 }
 
-class _SearchPageState extends State<SearchPage> {
-  final _ctrl = TextEditingController();
+class _LibrarySearchState extends State<LibrarySearch> {
   Timer? _debounce;
   String _q = '';
   List<TextSearchResult>? _results;
@@ -21,18 +22,30 @@ class _SearchPageState extends State<SearchPage> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    _schedule(widget.query);
+  }
+
+  @override
+  void didUpdateWidget(covariant LibrarySearch old) {
+    super.didUpdateWidget(old);
+    if (old.query != widget.query) _schedule(widget.query);
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
-    _ctrl.dispose();
     super.dispose();
   }
 
-  void _onChanged(String v) {
+  void _schedule(String q) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () => _search(v.trim()));
+    _debounce = Timer(const Duration(milliseconds: 400), () => _search(q.trim()));
   }
 
   Future<void> _search(String q) async {
+    if (!mounted) return;
     setState(() {
       _q = q;
       _error = null;
@@ -55,92 +68,72 @@ class _SearchPageState extends State<SearchPage> {
   @override
   Widget build(BuildContext context) {
     final results = _results;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Search')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: TextField(
-              controller: _ctrl,
-              autocorrect: false,
-              onChanged: _onChanged,
-              decoration: InputDecoration(
-                hintText: 'Text in a photo - signs, receipts, screenshots…',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _ctrl.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _ctrl.clear();
-                          _search('');
-                        }),
-              ),
-            ),
-          ),
-          if (_loading) const LinearProgressIndicator(minHeight: 2),
-          Expanded(
-            child: _error != null
-                ? Center(child: Text('Search failed: $_error'))
-                : results == null
-                    ? Center(
+    return Column(
+      children: [
+        if (_loading) const LinearProgressIndicator(minHeight: 2),
+        Expanded(
+          child: _error != null
+              ? Center(child: Text('Search failed: $_error'))
+              : results == null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
                         child: Text(
-                          _q.isEmpty
-                              ? 'Type at least 2 characters.'
-                              : 'Type at least 2 characters.',
+                          'Finds words inside your photos - signs, receipts, screenshots, menus.\n'
+                          'Type at least 2 characters.',
+                          textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
-                      )
-                    : results.isEmpty
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(24),
-                              child: Text(
-                                'No matches for "$_q". Text is indexed in the background after '
-                                'upload, so very recent photos may not be searchable yet.',
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
+                      ),
+                    )
+                  : results.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              'No photos with "$_q" in them. Text is read in the background after '
+                              'upload, so very recent photos may not be searchable yet.',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodySmall,
                             ),
-                          )
-                        : GridView.builder(
-                            padding: const EdgeInsets.all(4),
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
-                            itemCount: results.length,
-                            itemBuilder: (context, i) {
-                              final r = results[i];
-                              return GestureDetector(
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => MatchViewer(api: widget.api, result: r, query: _q),
-                                  ),
-                                ),
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    Image.network(widget.api.thumbUrl(r.asset.id),
-                                        headers: widget.api.authHeaders, cacheWidth: 360, fit: BoxFit.cover),
-                                    Positioned(
-                                      right: 4, top: 4,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                        decoration: BoxDecoration(
-                                            color: Colors.black54, borderRadius: BorderRadius.circular(4)),
-                                        child: Text('${r.matches.length}×',
-                                            style: const TextStyle(fontSize: 11)),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
                           ),
-          ),
-        ],
-      ),
+                        )
+                      : GridView.builder(
+                          padding: const EdgeInsets.all(4),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
+                          itemCount: results.length,
+                          itemBuilder: (context, i) {
+                            final r = results[i];
+                            return GestureDetector(
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => MatchViewer(api: widget.api, result: r, query: _q),
+                                ),
+                              ),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Image.network(widget.api.thumbUrl(r.asset.id),
+                                      headers: widget.api.authHeaders, cacheWidth: 360, fit: BoxFit.cover),
+                                  Positioned(
+                                    right: 4, top: 4,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                      decoration: BoxDecoration(
+                                          color: Colors.black54, borderRadius: BorderRadius.circular(4)),
+                                      child: Text('${r.matches.length}×',
+                                          style: const TextStyle(fontSize: 11)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+        ),
+      ],
     );
   }
 }
@@ -161,10 +154,23 @@ class MatchViewer extends StatelessWidget {
     final words = result.matches.map((m) => m.word).toSet().take(6).join(', ');
     return Scaffold(
       backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.black54,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        flexibleSpace: const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0x66000000), Color(0x00000000)],
+            ),
+          ),
+        ),
         title: Text('${result.matches.length} match${result.matches.length == 1 ? '' : 'es'}: $words',
-            style: const TextStyle(fontSize: 14)),
+            style: const TextStyle(fontSize: 14, color: Colors.white)),
       ),
       body: Center(
         child: LayoutBuilder(

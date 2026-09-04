@@ -134,6 +134,13 @@ computer's user is the administrator (no password); members sign in with theirs,
   right-click → Open (unsigned app). Install helpers with `brew install ffmpeg tesseract`.
   Data lives in `~/Library/Application Support/Photobank`, photos in `~/Pictures/Photobank`.
 - Or locally on a Mac: `bash scripts/build-desktop.sh`.
+- **Signed & notarized macOS builds** (no right-click → Open): add two repository secrets and
+  every macOS build is signed with the hardened runtime and notarized by Apple, then stapled.
+  `MAC_DEV_ID_P12_BASE64` — a *Developer ID Application* certificate exported from Xcode
+  (Settings → Accounts → Manage Certificates → `+` → Developer ID Application, then
+  right-click → Export as `.p12`; `base64 -i cert.p12 | pbcopy`) and `MAC_DEV_ID_P12_PASSWORD`.
+  Notarization reuses the App Store Connect API key secrets from `mobile/TESTFLIGHT.md`.
+  Locally: `MAC_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" bash scripts/build-desktop.sh`.
 - **Icons:** `.\scripts\make-icons.ps1` regenerates every app icon (exe/.icns/tray, web favicon +
   home-screen icons, iOS/Android launcher PNGs) from the one design in `scripts/make_icons.py`.
 

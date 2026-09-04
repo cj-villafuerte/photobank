@@ -9,23 +9,34 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// dropped and the user is asked for the password again with the email prefilled.
 class SavedAccount {
   final String server; // normalized base URL, e.g. http://192.168.1.23:8000
+  final String? name; // how the server introduced itself (its computer name), if known
   final String email;
   final String token; // '' once the server rejected it
   final DateTime usedAt;
 
-  const SavedAccount({required this.server, required this.email, required this.token, required this.usedAt});
+  const SavedAccount({required this.server, this.name, required this.email, required this.token, required this.usedAt});
 
   bool get hasToken => token.isNotEmpty;
   String get initial => email.isEmpty ? '?' : email[0].toUpperCase();
   String get serverLabel => Uri.tryParse(server)?.host ?? server;
 
-  SavedAccount copyWith({String? token, DateTime? usedAt}) =>
-      SavedAccount(server: server, email: email, token: token ?? this.token, usedAt: usedAt ?? this.usedAt);
+  /// Friendly label for lists: the computer's name when we have it, never a bare address
+  /// unless that's all there is.
+  String get displayName {
+    final n = name?.trim() ?? '';
+    if (n.isNotEmpty && n != server && !n.startsWith('http')) return n;
+    return serverLabel;
+  }
 
-  Map<String, dynamic> toJson() => {'server': server, 'email': email, 'token': token, 'usedAt': usedAt.toIso8601String()};
+  SavedAccount copyWith({String? token, DateTime? usedAt}) => SavedAccount(
+      server: server, name: name, email: email, token: token ?? this.token, usedAt: usedAt ?? this.usedAt);
+
+  Map<String, dynamic> toJson() =>
+      {'server': server, 'name': name, 'email': email, 'token': token, 'usedAt': usedAt.toIso8601String()};
 
   factory SavedAccount.fromJson(Map<String, dynamic> j) => SavedAccount(
         server: j['server'] as String,
+        name: j['name'] as String?,
         email: j['email'] as String,
         token: j['token'] as String? ?? '',
         usedAt: DateTime.tryParse(j['usedAt'] as String? ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),

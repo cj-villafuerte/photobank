@@ -242,16 +242,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     ],
                   ),
           ),
-          const SizedBox(height: 20),
-          Text('Server', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.dns),
-              title: Text(widget.api.baseUrl),
-              subtitle: const Text('Change passwords and manage users in the web app'),
-            ),
-          ),
           // the public demo server never removes anything from the phone
           if (widget.api.demo == null) ...[
           const SizedBox(height: 20),
@@ -415,6 +405,34 @@ class _SettingsPageState extends State<SettingsPage> {
                   leading: const Icon(Icons.logout),
                   title: const Text('Log out'),
                   onTap: () => widget.onLogout(),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          // the technical bits, out of the way of people who don't need them
+          Card(
+            child: ExpansionTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('Advanced'),
+              subtitle: const Text('Server address and account details'),
+              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Server address'),
+                  subtitle: SelectableText(widget.api.baseUrl),
+                ),
+                if (me != null)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Signed in as'),
+                    subtitle: Text(me['email']?.toString() ?? ''),
+                  ),
+                Text(
+                  'Passwords and member accounts are managed in the Photobank app on the computer '
+                  '(or its web page at the address above).',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),

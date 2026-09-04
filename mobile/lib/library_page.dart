@@ -554,9 +554,22 @@ class _AssetViewerState extends State<AssetViewer> {
     final asset = widget.assets[_index];
     return Scaffold(
       backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true, // the photo runs under the bar; a soft scrim keeps icons legible
       appBar: AppBar(
-        backgroundColor: Colors.black54,
-        title: Text('${_index + 1} / ${widget.assets.length}'),
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        flexibleSpace: const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0x66000000), Color(0x00000000)],
+            ),
+          ),
+        ),
+        title: Text('${_index + 1} / ${widget.assets.length}', style: const TextStyle(color: Colors.white)),
         actions: [
           IconButton(
             icon: Icon(_isFav(asset) ? Icons.favorite : Icons.favorite_border,

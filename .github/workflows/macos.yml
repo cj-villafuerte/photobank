@@ -13,6 +13,14 @@ on:
 jobs:
   build-macos:
     runs-on: macos-latest
+    env:
+      # Developer ID signing + notarization switch on when these secrets exist;
+      # without them the app is ad-hoc signed (right-click > Open on first launch).
+      MAC_DEV_ID_P12_BASE64: ${{ secrets.MAC_DEV_ID_P12_BASE64 }}
+      MAC_DEV_ID_P12_PASSWORD: ${{ secrets.MAC_DEV_ID_P12_PASSWORD }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
     steps:
       - uses: actions/checkout@v5
 
@@ -23,6 +31,33 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - name: Developer ID certificate (optional)
+        if: env.MAC_DEV_ID_P12_BASE64 != ''
+        env:
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          CERT="$RUNNER_TEMP/devid.p12"; KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          echo -n "$MAC_DEV_ID_P12_BASE64" | base64 --decode > "$CERT"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT" -P "$MAC_DEV_ID_P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)".*/\1/')
+          [ -n "$IDENTITY" ] || { echo "::error::no 'Developer ID Application' identity in the .p12"; exit 1; }
+          echo "MAC_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          if [ -n "$ASC_API_KEY_P8_BASE64" ]; then
+            mkdir -p ~/private_keys
+            echo -n "$ASC_API_KEY_P8_BASE64" | base64 --decode > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+            echo "NOTARY_KEY_PATH=$HOME/private_keys/AuthKey_$ASC_KEY_ID.p8" >> "$GITHUB_ENV"
+            echo "NOTARY_KEY_ID=$ASC_KEY_ID" >> "$GITHUB_ENV"
+            echo "NOTARY_ISSUER_ID=$ASC_ISSUER_ID" >> "$GITHUB_ENV"
+          else
+            echo "::warning::no App Store Connect API key: signing only, no notarization"
+          fi
 
       - name: Build Photobank.app
         run: bash scripts/build-desktop.sh

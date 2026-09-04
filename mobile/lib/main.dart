@@ -14,7 +14,6 @@ import 'notifications.dart';
 import 'onboarding_page.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
-import 'stats_page.dart';
 import 'sync_service.dart';
 import 'theme.dart';
 
@@ -37,6 +36,7 @@ class PhotobankApp extends StatelessWidget {
     return MaterialApp(
       title: 'Photobank',
       theme: photobankTheme(),
+      debugShowCheckedModeBanner: false,
       home: const RootGate(),
     );
   }
@@ -104,15 +104,30 @@ class _HomeShellState extends State<HomeShell> {
   // the Library tab is reopened after a while; LibraryPage re-reads on every bump.
   final _libraryRefresh = ValueNotifier<int>(0);
   DateTime _libraryFresh = DateTime.now();
+  // search lives inside the Library tab: the app bar turns into a search field
+  bool _searchOpen = false;
+  final _searchCtrl = TextEditingController();
+  String _query = '';
 
   void _touchLibrary() {
     _libraryFresh = DateTime.now();
     _libraryRefresh.value++;
   }
 
+  void _toggleSearch() {
+    setState(() {
+      _searchOpen = !_searchOpen;
+      if (!_searchOpen) {
+        _searchCtrl.clear();
+        _query = '';
+      }
+    });
+  }
+
   @override
   void dispose() {
     _libraryRefresh.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -136,20 +151,45 @@ class _HomeShellState extends State<HomeShell> {
           SyncPage(api: widget.api, onLogout: widget.onLogout, onLibraryChanged: _touchLibrary),
           Scaffold(
             appBar: AppBar(
-              title: const Text('Library'),
+              title: _searchOpen
+                  ? TextField(
+                      controller: _searchCtrl,
+                      autofocus: true,
+                      autocorrect: false,
+                      textInputAction: TextInputAction.search,
+                      decoration: const InputDecoration(
+                        hintText: 'Search text in your photos…',
+                        border: InputBorder.none,
+                      ),
+                      onChanged: (v) => setState(() => _query = v),
+                    )
+                  : const Text('Library'),
               actions: [
                 IconButton(
-                  icon: const Icon(Icons.photo_album_outlined),
-                  tooltip: 'Albums',
-                  onPressed: () => Navigator.push(
-                      context, MaterialPageRoute(builder: (_) => AlbumsPage(api: widget.api))),
+                  icon: Icon(_searchOpen ? Icons.close : Icons.search),
+                  tooltip: _searchOpen ? 'Close search' : 'Search',
+                  onPressed: _toggleSearch,
                 ),
+                if (!_searchOpen)
+                  IconButton(
+                    icon: const Icon(Icons.photo_album_outlined),
+                    tooltip: 'Albums',
+                    onPressed: () => Navigator.push(
+                        context, MaterialPageRoute(builder: (_) => AlbumsPage(api: widget.api))),
+                  ),
               ],
             ),
-            body: LibraryPage(api: widget.api, refresh: _libraryRefresh),
+            // the grid keeps its scroll position and state under the search results
+            body: Stack(
+              children: [
+                Offstage(
+                  offstage: _searchOpen,
+                  child: LibraryPage(api: widget.api, refresh: _libraryRefresh),
+                ),
+                if (_searchOpen) LibrarySearch(api: widget.api, query: _query),
+              ],
+            ),
           ),
-          SearchPage(api: widget.api),
-          StatsPage(api: widget.api),
           SettingsPage(api: widget.api, onLogout: widget.onLogout),
         ],
       ),
@@ -165,8 +205,6 @@ class _HomeShellState extends State<HomeShell> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.cloud_upload_outlined), selectedIcon: Icon(Icons.cloud_upload), label: 'Backup'),
           NavigationDestination(icon: Icon(Icons.photo_library_outlined), selectedIcon: Icon(Icons.photo_library), label: 'Library'),
-          NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
-          NavigationDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: 'Stats'),
           NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
         ],
       ),
@@ -192,7 +230,7 @@ class _SetupPageState extends State<SetupPage> {
   final Set<String> _resolving = {}; // seen on the network, address not resolved yet
   BonsoirDiscovery? _discovery;
   bool _manual = false;
-  final _url = TextEditingController(text: 'http://192.168.');
+  final _url = TextEditingController();
   List<SavedAccount> _savedServers = []; // one entry per server, most recent first
 
   @override
@@ -338,11 +376,11 @@ class _SetupPageState extends State<SetupPage> {
                       padding: const EdgeInsets.all(16),
                       child: Text(
                         _resolving.isEmpty
-                            ? 'No servers found yet. Make sure the Photobank server is '
-                              'running and this phone is on the same Wi-Fi.'
+                            ? 'No servers found yet. Make sure Photobank is open on your computer '
+                              'and this phone is on the same Wi-Fi.'
                             : 'Found ${_resolving.length} server${_resolving.length == 1 ? '' : 's'} '
-                              '(${_resolving.join(', ')}) - resolving address…\n'
-                              'If this never completes, use "Enter address manually".',
+                              '(${_resolving.join(', ')}) - connecting…\n'
+                              'If this never completes, use Advanced below.',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
@@ -350,9 +388,9 @@ class _SetupPageState extends State<SetupPage> {
                 for (final s in servers)
                   Card(
                     child: ListTile(
-                      leading: const Icon(Icons.dns),
+                      leading: const Icon(Icons.computer),
                       title: Text(s.name),
-                      subtitle: Text(s.url),
+                      subtitle: const Text('On this Wi-Fi'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => _loginTo(s.url, s.name),
                     ),
@@ -364,10 +402,10 @@ class _SetupPageState extends State<SetupPage> {
                     Card(
                       child: ListTile(
                         leading: const Icon(Icons.history),
-                        title: Text(s.serverLabel),
-                        subtitle: Text('${s.server}  ·  ${s.email}'),
+                        title: Text(s.displayName),
+                        subtitle: Text(s.email),
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: () => _loginTo(s.server, s.serverLabel),
+                        onTap: () => _loginTo(s.server, s.displayName),
                       ),
                     ),
                 const SizedBox(height: 12),
@@ -382,25 +420,35 @@ class _SetupPageState extends State<SetupPage> {
                   ),
                 ),
                 const SizedBox(height: 20),
+                // the address is for people who know what one is; everyone else taps a card
                 if (!_manual)
-                  TextButton(
+                  TextButton.icon(
                     onPressed: () => setState(() => _manual = true),
-                    child: const Text('Enter address manually'),
+                    icon: const Icon(Icons.tune, size: 18),
+                    label: const Text('Advanced'),
                   )
                 else ...[
+                  Text('ADVANCED', style: pbMono(size: 10)),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Connect by address - it is shown in the Console of the Photobank app on your '
+                    'computer, or use your own domain / VPN address.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 10),
                   TextField(
                     controller: _url,
                     keyboardType: TextInputType.url,
                     autocorrect: false,
                     decoration: const InputDecoration(
-                      labelText: 'Server URL',
-                      hintText: 'http://192.168.1.23:8000',
+                      labelText: 'Server address',
+                      hintText: 'https://photos.example.com',
                       border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 12),
                   FilledButton(
-                    onPressed: () => _loginTo(_normalizedManualUrl(), _normalizedManualUrl()),
+                    onPressed: () => _loginTo(_normalizedManualUrl(), Uri.tryParse(_normalizedManualUrl())?.host ?? _normalizedManualUrl()),
                     child: const Padding(padding: EdgeInsets.all(12), child: Text('Connect')),
                   ),
                 ],
@@ -462,6 +510,7 @@ class _LoginSheetState extends State<_LoginSheet> {
     if (!_remember || _isDemo || widget.api.token == null) return;
     await SavedAccounts.remember(SavedAccount(
       server: SavedAccounts.normalize(widget.api.baseUrl),
+      name: widget.serverLabel,
       email: email,
       token: widget.api.token!,
       usedAt: DateTime.now(),
@@ -1055,11 +1104,9 @@ class _SyncPageState extends State<SyncPage> {
                       const SizedBox(height: 20),
                       Text(
                         widget.api.demo != null
-                            ? 'Demo server: ${widget.api.baseUrl}\n'
-                              'Each backup sends the newest 25 photos; the server removes them '
-                              'again shortly after. Nothing is removed from this phone.'
-                            : 'Server: ${widget.api.baseUrl}\n'
-                              'Backups only run while this app is open. Photos are verified '
+                            ? 'Demo server: each backup sends the newest 25 photos; the server '
+                              'removes them again shortly after. Nothing is removed from this phone.'
+                            : 'Backups only run while this app is open. Photos are verified '
                               'on the server before anything is removed from the phone.',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),

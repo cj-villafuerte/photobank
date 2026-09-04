@@ -22,6 +22,16 @@ Future<void> settle(WidgetTester tester, {double seconds = 3}) async {
   }
 }
 
+/// Pump until [finder] shows up (photo stats on a fresh simulator can take a while).
+Future<bool> waitFor(WidgetTester tester, Finder finder, {double seconds = 30}) async {
+  final frames = (seconds * 4).round();
+  for (var i = 0; i < frames; i++) {
+    await tester.pump(const Duration(milliseconds: 250));
+    if (finder.evaluate().isNotEmpty) return true;
+  }
+  return false;
+}
+
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -40,11 +50,13 @@ void main() {
     });
 
     app.main();
-    await settle(tester, seconds: 8); // health probe, photo stats, first thumbnails
+    await waitFor(tester, find.text('Backed up')); // stat cards = photo library scanned
+    await settle(tester, seconds: 2);
     await binding.takeScreenshot('01-backup');
 
     await tester.tap(find.text('Library'));
-    await settle(tester, seconds: 8);
+    await waitFor(tester, find.byType(GridView));
+    await settle(tester, seconds: 8); // let the thumbnails in view finish loading
     await binding.takeScreenshot('02-library');
 
     // open the first photo
@@ -63,12 +75,8 @@ void main() {
     await tester.tap(find.byTooltip('Back').first);
     await settle(tester, seconds: 2);
 
-    await tester.tap(find.text('Stats'));
-    await settle(tester, seconds: 6);
-    await binding.takeScreenshot('05-stats');
-
     await tester.tap(find.text('Settings'));
     await settle(tester, seconds: 3);
-    await binding.takeScreenshot('06-settings');
+    await binding.takeScreenshot('05-settings');
   });
 }
