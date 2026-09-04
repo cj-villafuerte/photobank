@@ -51,10 +51,11 @@ platform :ios do
     key = asc_key
     version = ENV["APP_VERSION"] || File.read("../pubspec.yaml")[/^version:\s*([\d.]+)/, 1]
     UI.message("Listing for version #{version}")
+    # deliver reads the version's App Store review detail for attachments; on a fresh
+    # version that record only exists once review info (with a valid phone) was written,
+    # otherwise spaceship dies with "No data". So the phone is required here too.
     info = review_info
-    if info.nil?
-      UI.important("REVIEW_CONTACT_PHONE is not set: uploading the listing without App Review contact/demo details (re-run once it is)")
-    end
+    UI.user_error!("REVIEW_CONTACT_PHONE secret is required (E.164, e.g. +639171234567): App Store Connect needs a contact phone on the review details before anything else can be written") if info.nil?
     deliver(
       api_key: key,
       app_version: version,            # creates the version in App Store Connect if it doesn't exist
