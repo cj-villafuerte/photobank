@@ -57,6 +57,17 @@ jobs:
             --target integration_test/screenshots_test.dart \
             --dart-define=PB_SERVER="${{ inputs.server }}"
 
+      # The simulator runtime ignores `simctl privacy grant photos` (only photos-add
+      # registers), so the photo-permission dialog is answered like a person would:
+      # idb reads the accessibility tree and taps "Allow Full Access".
+      - name: Install idb (taps system dialogs)
+        run: |
+          brew tap facebook/fb >/dev/null
+          brew install idb-companion >/dev/null 2>&1 || brew install idb-companion
+          pipx install fb-idb >/dev/null 2>&1 || python3 -m pip install --user --break-system-packages fb-idb
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          command -v idb || ls ~/.local/bin
+
       # Install, grant photo access, and launch the app ourselves. `flutter drive` would
       # reinstall the app (wiping the grant) and race the launch; instead the app starts
       # with a fixed VM-service port and the driver attaches to it (--use-existing-app).
@@ -90,6 +101,33 @@ jobs:
         timeout-minutes: 15
         run: |
           rm -rf fastlane/screenshots/en-US
+          cat > diag/tap_allow.py <<'EOF'
+          # Polls the simulator's accessibility tree and taps the photo-permission
+          # dialog's "Allow Full Access" (or "Allow"/"OK") as soon as it shows up.
+          import json, os, subprocess, sys, time
+          udid = os.environ["UDID"]
+          wanted = ("Allow Full Access", "Allow Access to All Photos", "Allow", "OK")
+          deadline = time.time() + 60
+          while time.time() < deadline:
+              try:
+                  out = subprocess.run(["idb", "ui", "describe-all", "--udid", udid, "--json"],
+                                       capture_output=True, text=True, timeout=20).stdout
+                  items = json.loads(out) if out.strip().startswith("[") else [json.loads(l) for l in out.splitlines() if l.strip()]
+                  for it in items:
+                      label = str(it.get("AXLabel") or it.get("title") or "")
+                      if label in wanted:
+                          f = it["frame"]
+                          x, y = f["x"] + f["width"] / 2, f["y"] + f["height"] / 2
+                          subprocess.run(["idb", "ui", "tap", "--udid", udid, str(int(x)), str(int(y))], timeout=20)
+                          print(f"tapped '{label}' at {int(x)},{int(y)}", flush=True)
+                          sys.exit(0)
+              except Exception as e:  # idb still warming up, or no dialog yet
+                  print("tapper:", type(e).__name__, str(e)[:120], flush=True)
+              time.sleep(2)
+          print("tapper: no permission dialog seen (fine if the grant worked)", flush=True)
+          EOF
+          python3 diag/tap_allow.py > diag/tapper.log 2>&1 &
+          TAPPID=$!
           set +e
           flutter drive -v \
             --use-existing-app=http://127.0.0.1:54321/ \
@@ -99,7 +137,8 @@ jobs:
             -d "$UDID" > diag/flutter-drive.log 2>&1
           RC=$?
           set -e
-          kill $LOGPID 2>/dev/null || true
+          kill $TAPPID $LOGPID 2>/dev/null || true
+          echo "--- tapper ---"; cat diag/tapper.log || true
           xcrun simctl io "$UDID" screenshot diag/simulator-at-end.png || true
           grep -E "saved fastlane|All tests passed|Some tests failed|Exception|Error|error" diag/flutter-drive.log | head -60 || true
           ls -la fastlane/screenshots/en-US 2>/dev/null || echo "no screenshots written"
