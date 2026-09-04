@@ -232,20 +232,30 @@ def main() -> None:
         tray = _make_tray(window, url)
 
         def on_closing():
-            # closing the window hides it; the server keeps serving the LAN
-            # (phones keep syncing). Quit is on the tray icon.
+            # closing the window is quitting: the server stops with it (phones see the
+            # server go away and say so). The tray icon is only for the running app.
             if tray is not None:
-                window.hide()
-                return False
+                try:
+                    tray.stop()
+                except Exception:
+                    pass
             return True
 
         window.events.closing += on_closing
-        webview.start()  # returns only after window.destroy() (tray Quit)
+        webview.start()  # returns once the window is closed (or tray Quit destroyed it)
         if tray is not None:
-            tray.stop()
+            try:
+                tray.stop()
+            except Exception:
+                pass
 
     server.should_exit = True
     thread.join(timeout=10)
+    # background threads (thumbnails, mDNS, pystray's loop) must not keep the process
+    # alive after the window is gone: the app is closed, so the server is closed
+    logging.getLogger("photobank.desktop").info("window closed - exiting")
+    logging.shutdown()
+    os._exit(0)
 
 
 def _make_tray(window, url: str):
