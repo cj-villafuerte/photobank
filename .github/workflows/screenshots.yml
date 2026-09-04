@@ -67,15 +67,26 @@ jobs:
           xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
 
       - name: Drive the app and capture
+        timeout-minutes: 15
         run: |
           rm -rf fastlane/screenshots/en-US
-          flutter drive \
+          mkdir -p diag
+          # the app's own log lines while the drive runs (where did it stall?)
+          xcrun simctl spawn "$UDID" log stream --style compact --predicate 'process == "Runner" OR eventMessage CONTAINS "Photobank"' > diag/sim-app.log 2>&1 &
+          LOGPID=$!
+          set +e
+          flutter drive -v \
             --driver test_driver/integration_test.dart \
             --target integration_test/screenshots_test.dart \
             --use-application-binary build/ios/iphonesimulator/Runner.app \
             --dart-define=PB_SERVER="${{ inputs.server }}" \
-            -d "$UDID"
-          ls -la fastlane/screenshots/en-US
+            -d "$UDID" > diag/flutter-drive.log 2>&1
+          RC=$?
+          set -e
+          kill $LOGPID || true
+          xcrun simctl io "$UDID" screenshot diag/simulator-at-end.png || true
+          grep -E "saved fastlane|All tests passed|Some tests failed|Exception|Error|error" diag/flutter-drive.log | head -60 || true
+          ls -la fastlane/screenshots/en-US 2>/dev/null || echo "no screenshots written"
           python3 - <<'EOF'
           import struct, glob
           for p in sorted(glob.glob("fastlane/screenshots/en-US/*.png")):
@@ -83,6 +94,16 @@ jobs:
                   f.seek(16); w, h = struct.unpack(">II", f.read(8))
               print(f"{p}: {w}x{h}")
           EOF
+          exit $RC
+
+      - name: Diagnostics
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: screenshot-run-diagnostics
+          path: |
+            mobile/diag/*
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v5
         with:
