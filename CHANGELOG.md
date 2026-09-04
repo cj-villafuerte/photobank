@@ -29,10 +29,10 @@
   Duplicates / Dashboard / Trash / Settings for an account that owns no photos here. The
   nav is brand + "View as member…"; every route lands on the Console, and the window
   always opens on it (the administrator is signed in before anything renders).
-- iPhone: the Library's source filter only chooses which photos show - "Phone only" is
-  exactly that, and a backed-up photo is always its server copy with favorites, albums
-  and playback. Backing up from a phone-only photo's viewer hands over to the regular
-  viewer. A connection watchdog sends the app back to the setup screen with the reason
+- iPhone: the Library's source filter only chooses which photos show - All / Server /
+  Phone, with "Not backed up only" in the Phone view's menu - and a backed-up photo
+  always opens as its server copy with favorites, albums and playback. Backing up from a
+  phone-only photo's viewer hands over to the regular viewer. A connection watchdog sends the app back to the setup screen with the reason
   when the server stops answering or the sign-in is revoked; on app open an unreachable
   server does the same. Server discovery stops after 60 s with a tap-to-retry card.
   "Change password" in Settings (not on the demo server). The three typefaces are bundled

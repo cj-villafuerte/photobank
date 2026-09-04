@@ -85,12 +85,15 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
   Set<String> _collapsed = {}; // month buckets folded up in the date view
 
   // What the timeline shows: 'all' merges the server with the photos that are only on
-  // this phone, 'server' is the server only, 'phone' is only what is not backed up yet.
-  // A backed-up photo is always its server copy (favorites, albums, playback), whatever
-  // the filter - the filter changes which photos show, never what a photo can do.
+  // this phone, 'server' is the server only, 'phone' is the camera roll (a cloud badge on
+  // what is backed up; "Not backed up only" narrows it). A backed-up photo always opens
+  // as its server copy (favorites, albums, playback), whatever the filter - the filter
+  // changes which photos show, never what a photo can do.
   String _source = 'all';
+  bool _notBackedUp = false; // phone view: hide what is already on the server
   List<AssetEntity> _phone = [];
   Set<String> _synced = {};
+  Map<String, String> _syncedChecksums = {}; // device id -> checksum, to find the server copy
   final Map<String, Future<Uint8List?>> _localThumbs = {};
 
   static const _pageSize = 200;
@@ -103,6 +106,7 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
         setState(() {
           _collapsed = (p.getStringList('collapsed_months') ?? []).toSet();
           _source = p.getString('library_source') ?? 'all';
+          _notBackedUp = p.getBool('library_not_backed_up') ?? false;
         });
         _loadPhone();
       }
@@ -150,11 +154,12 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
           list.addAll(await all.getAssetListRange(start: i, end: i + 500));
         }
       }
-      final synced = await SyncService.syncedDeviceIds();
+      final synced = await SyncService.syncedChecksums();
       if (mounted) {
         setState(() {
           _phone = list;
-          _synced = synced;
+          _syncedChecksums = synced;
+          _synced = synced.keys.toSet();
         });
       }
     } catch (_) {
@@ -176,7 +181,9 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
     final phoneByMonth = <String, List<AssetEntity>>{};
     if (_source != 'server' && !_favorites) {
       for (final a in _phone) {
-        if (_synced.contains(a.id)) continue; // backed up: shown as its server copy
+        // 'all' shows a backed-up photo once, as its server copy; the phone view lists
+        // the whole roll unless narrowed to what is not backed up yet
+        if (_synced.contains(a.id) && (_source == 'all' || _notBackedUp)) continue;
         phoneByMonth.putIfAbsent(_monthKey(a.createDateTime), () => []).add(a);
       }
     }
@@ -355,7 +362,9 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
     final local = item.local!;
     final synced = _synced.contains(local.id);
     return GestureDetector(
-      onTap: () => Navigator.push(
+      // backed up: open the server copy (favorite, albums, menu); otherwise the phone-only
+      // viewer with its backup button
+      onTap: () => synced ? _openServerCopy(local) : Navigator.push(
         context,
         viewerRoute(_LocalPhotoViewer(
           api: widget.api,
@@ -381,6 +390,29 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
           _cloudBadge(synced),
         ],
       ),
+    );
+  }
+
+  /// A backed-up phone photo tapped in the phone view: find its server copy by checksum
+  /// and open the regular viewer. If the server cannot say (or is unreachable), fall
+  /// back to the phone-side viewer.
+  Future<void> _openServerCopy(AssetEntity local) async {
+    RemoteAsset? remote;
+    final checksum = _syncedChecksums[local.id];
+    if (checksum != null) {
+      try {
+        final id = (await widget.api.existingChecksums([checksum]))[checksum]?.assetId ?? '';
+        if (id.isNotEmpty) remote = await widget.api.asset(id);
+      } catch (_) {
+        // offline or an older server: the fallback below still shows the photo
+      }
+    }
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      viewerRoute(remote != null
+          ? AssetViewer(api: widget.api, assets: [remote], initialIndex: 0)
+          : _LocalPhotoViewer(api: widget.api, entity: local, synced: true)),
     );
   }
 
@@ -462,10 +494,9 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
                     showSelectedIcon: false,
                     style: const ButtonStyle(visualDensity: VisualDensity.compact),
                     segments: const [
-                      // text only: with icons "Phone only" wraps onto two lines on a 6.7" phone
                       ButtonSegment(value: 'all', label: Text('All')),
-                      ButtonSegment(value: 'server', label: Text('Server')),
-                      ButtonSegment(value: 'phone', label: Text('Phone only')),
+                      ButtonSegment(value: 'server', icon: Icon(Icons.cloud_done_outlined, size: 16), label: Text('Server')),
+                      ButtonSegment(value: 'phone', icon: Icon(Icons.smartphone, size: 16), label: Text('Phone')),
                     ],
                     selected: {_source},
                     onSelectionChanged: (sel) => _setSource(sel.first),
@@ -496,6 +527,9 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
                 case 'favorites':
                   setState(() => _favorites = !_favorites);
                   _load();
+                case 'not_backed_up':
+                  setState(() => _notBackedUp = !_notBackedUp);
+                  SharedPreferences.getInstance().then((p) => p.setBool('library_not_backed_up', _notBackedUp));
                 case 'fold':
                   _setAllCollapsed(_collapsed.isEmpty);
               }
@@ -506,6 +540,8 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
               CheckedPopupMenuItem(value: 'size_asc', checked: _sort == 'size_asc', child: const Text('Smallest first')),
               const PopupMenuDivider(),
               CheckedPopupMenuItem(value: 'favorites', checked: _favorites, child: const Text('Favorites only')),
+              if (_source == 'phone' && _sort == 'date')
+                CheckedPopupMenuItem(value: 'not_backed_up', checked: _notBackedUp, child: const Text('Not backed up only')),
               if (_sort == 'date')
                 PopupMenuItem(value: 'fold', child: Text(_collapsed.isEmpty ? 'Collapse all months' : 'Expand all months')),
             ],
@@ -586,7 +622,9 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
           Expanded(
             child: Center(
               child: Text(_source == 'phone'
-                  ? 'Nothing is only on this phone - everything is backed up (or the app has no photo access).'
+                  ? (_notBackedUp
+                      ? 'Everything on this phone is backed up.'
+                      : 'No photos on this phone (or the app has no photo access).')
                   : _source == 'server'
                       ? 'The server library is empty.'
                       : 'Nothing here yet - back up some photos or upload from the web.'),

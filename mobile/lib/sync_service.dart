@@ -47,12 +47,16 @@ class SyncService {
 
   /// Device asset ids this phone has backed up (as recorded by the last sync),
   /// for screens that don't own a SyncService - e.g. the merged Library.
-  static Future<Set<String>> syncedDeviceIds() async {
+  static Future<Set<String>> syncedDeviceIds() async => (await syncedChecksums()).keys.toSet();
+
+  /// Device asset id -> checksum for everything recorded as backed up (the checksum is
+  /// how a phone photo is matched to its server copy).
+  static Future<Map<String, String>> syncedChecksums() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('synced_v1');
     if (raw == null) return {};
     try {
-      return (jsonDecode(raw) as Map).keys.cast<String>().toSet();
+      return (jsonDecode(raw) as Map).cast<String, String>();
     } catch (_) {
       return {};
     }
