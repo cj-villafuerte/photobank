@@ -405,6 +405,44 @@ class SyncService {
     await _save();
   }
 
+  /// Back up one device photo right now (from the Library's phone-only viewer).
+  /// Same path as the full sync: fetch, fingerprint, skip if the server has it,
+  /// otherwise upload (plus the Live Photo video), then record it as synced.
+  Future<bool> backUpOne(AssetEntity asset, {void Function(int sent, int total)? onProgress}) async {
+    final file = await _fetchOriginal(asset, timeout: const Duration(minutes: 3));
+    if (file == null) return false;
+    try {
+      final checksum = await _sha256OfFile(file);
+      final existing = await api.existingChecksums([checksum]);
+      String? serverId;
+      final detail = existing[checksum];
+      if (detail != null) {
+        serverId = detail.assetId.isEmpty ? null : detail.assetId;
+      } else {
+        final name = await asset.titleAsync;
+        final outcome = await api.upload(file, name, asset.createDateTime, onProgress: onProgress);
+        serverId = outcome.assetId;
+      }
+      if (asset.isLivePhoto && serverId != null) {
+        try {
+          final live = await asset.originFileWithSubtype.timeout(const Duration(minutes: 3));
+          if (live != null && live.path != file.path) {
+            await api.uploadLiveVideo(serverId, live);
+            _liveDone.add(asset.id);
+            _discardCopy(live);
+          }
+        } catch (_) {
+          // the still is safely up; the video half retries on the next full sync
+        }
+      }
+      _synced[asset.id] = checksum;
+      await _save();
+      return true;
+    } finally {
+      _discardCopy(file);
+    }
+  }
+
   /// Backed-up items on the device, optionally only those taken before [before].
   Future<List<AssetEntity>> backedUp({DateTime? before}) async {
     final assets = await _allAssets();

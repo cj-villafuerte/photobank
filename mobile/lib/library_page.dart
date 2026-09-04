@@ -331,7 +331,18 @@ class _LibraryPageState extends State<LibraryPage> {
     final local = item.local!;
     final synced = _synced.contains(local.id);
     return GestureDetector(
-      onTap: () => Navigator.push(context, viewerRoute(_LocalPhotoViewer(entity: local, synced: synced))),
+      onTap: () => Navigator.push(
+        context,
+        viewerRoute(_LocalPhotoViewer(
+          api: widget.api,
+          entity: local,
+          synced: synced,
+          onBackedUp: () {
+            _loadPhone(); // the tile moves to the server side
+            _reload();
+          },
+        )),
+      ),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -630,47 +641,125 @@ class _GridItem {
         when = a.createDateTime;
 }
 
-/// A photo that lives only on the phone (or is shown from the phone side): big preview
-/// plus its backup state. Full playback and editing happen on the server copy.
-class _LocalPhotoViewer extends StatelessWidget {
+/// A photo that lives only on the phone (or is shown from the phone side): big preview,
+/// its backup state, and a one-tap backup. Favorites, albums and playback belong to the
+/// server copy, so they appear once it is backed up.
+class _LocalPhotoViewer extends StatefulWidget {
+  final PhotobankApi api;
   final AssetEntity entity;
   final bool synced;
-  const _LocalPhotoViewer({required this.entity, required this.synced});
+  final VoidCallback? onBackedUp;
+  const _LocalPhotoViewer({required this.api, required this.entity, required this.synced, this.onBackedUp});
+
+  @override
+  State<_LocalPhotoViewer> createState() => _LocalPhotoViewerState();
+}
+
+class _LocalPhotoViewerState extends State<_LocalPhotoViewer> {
+  late bool _synced = widget.synced;
+  bool _busy = false;
+  double? _pct;
+  String? _error;
+
+  Future<void> _backUp() async {
+    setState(() {
+      _busy = true;
+      _pct = null;
+      _error = null;
+    });
+    try {
+      final service = SyncService(widget.api);
+      await service.init();
+      final ok = await service.backUpOne(widget.entity, onProgress: (sent, total) {
+        if (total > 0 && mounted) setState(() => _pct = sent / total);
+      });
+      if (!mounted) return;
+      if (ok) {
+        setState(() => _synced = true);
+        widget.onBackedUp?.call();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backed up - it is on the server now')));
+      } else {
+        setState(() => _error = 'Could not read this photo from the phone (still downloading from iCloud?).');
+      }
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Backup failed: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final isVideo = widget.entity.type == AssetType.video;
     return Scaffold(
       appBar: AppBar(
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(synced ? Icons.cloud_done : Icons.smartphone, size: 18),
+            Icon(_synced ? Icons.cloud_done : Icons.smartphone, size: 18),
             const SizedBox(width: 8),
-            Text(synced ? 'Backed up' : 'Only on this phone'),
+            Text(_synced ? 'Backed up' : 'Only on this phone'),
           ],
         ),
+        actions: [
+          if (!_synced)
+            IconButton(
+              icon: const Icon(Icons.cloud_upload_outlined),
+              tooltip: 'Back up this photo',
+              onPressed: _busy ? null : _backUp,
+            ),
+        ],
       ),
       body: Column(
         children: [
+          if (_busy) LinearProgressIndicator(value: _pct, minHeight: 2),
           Expanded(
             child: Center(
               child: FutureBuilder<Uint8List?>(
-                future: entity.thumbnailDataWithSize(const ThumbnailSize(2000, 2000)),
+                future: widget.entity.thumbnailDataWithSize(const ThumbnailSize(2000, 2000)),
                 builder: (context, s) => s.data == null
                     ? const CircularProgressIndicator(strokeWidth: 2)
                     : InteractiveViewer(maxScale: 5, child: Image.memory(s.data!, fit: BoxFit.contain)),
               ),
             ),
           ),
-          if (!synced)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-              child: Text(
-                'Not on the server yet. Run a backup from the Backup tab to send it there.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  _synced
+                      ? 'On the server. Favorites, albums and viewing from other devices work on the '
+                        'server copy - find it under Server, or in All.'
+                      : 'Not on the server yet. Back it up to favorite it, add it to albums, '
+                        '${isVideo ? 'play it' : 'see it'} from anywhere, and free the space here.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                if (!_synced) ...[
+                  const SizedBox(height: 10),
+                  FilledButton.icon(
+                    onPressed: _busy ? null : _backUp,
+                    icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+                    label: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Text(_busy
+                          ? (_pct == null ? 'Preparing…' : 'Backing up ${(_pct! * 100).round()}%')
+                          : 'Back up this ${isVideo ? 'video' : 'photo'}'),
+                    ),
+                  ),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(_error!, textAlign: TextAlign.center,
+                      style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 13)),
+                ],
+              ],
             ),
+          ),
         ],
       ),
     );

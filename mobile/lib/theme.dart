@@ -171,6 +171,31 @@ ThemeData photobankTheme() {
       labelTextStyle: WidgetStateProperty.resolveWith(
           (s) => pbMono(size: 9, color: s.contains(WidgetState.selected) ? PbColors.ink : PbColors.faint)),
     ),
+    // menus: paper, hairline, 6px - not Material's tinted, oversized card
+    popupMenuTheme: PopupMenuThemeData(
+      color: PbColors.paper,
+      surfaceTintColor: Colors.transparent,
+      elevation: 3,
+      shadowColor: const Color(0x22000000),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(6)),
+        side: BorderSide(color: PbColors.line),
+      ),
+      textStyle: GoogleFonts.instrumentSans(fontSize: 15, color: PbColors.ink),
+      labelTextStyle: WidgetStatePropertyAll(GoogleFonts.instrumentSans(fontSize: 15, color: PbColors.ink)),
+      iconColor: PbColors.ink,
+      iconSize: 22,
+    ),
+    menuTheme: const MenuThemeData(
+      style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(PbColors.paper),
+        surfaceTintColor: WidgetStatePropertyAll(Colors.transparent),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(6)),
+          side: BorderSide(color: PbColors.line),
+        )),
+      ),
+    ),
     dialogTheme: DialogThemeData(
       backgroundColor: PbColors.paper,
       shape: shape,
