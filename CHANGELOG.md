@@ -25,6 +25,9 @@
   controls in Settings, even when the account has the admin role (the first account
   registered always does). "Sign out" returns straight to the administrator's Console.
   Session switches now refetch instead of clearing the query cache (which never re-rendered).
+- Desktop: the administrator's app is the Console only - no Library / Albums / Search /
+  Duplicates / Dashboard / Trash / Settings for an account that owns no photos here. The
+  nav is brand + "View as member…"; every route lands on the Console.
 - iOS: `NSAllowsArbitraryLoads` removed (LAN HTTP only), `CFBundleName` = Photobank,
   export-compliance flag set; bundle ids are `com.cjvillafuerte.photobank`.
 - Branding: made by CJ Villafuerte.

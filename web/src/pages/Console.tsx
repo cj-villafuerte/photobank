@@ -115,8 +115,13 @@ export default function Console() {
     <div className="page" style={{ maxWidth: 1000 }}>
       <h1>Console</h1>
       <p className="muted" style={{ marginBottom: 8 }}>
-        This computer hosts the library. Manage it here; browse it in the{" "}
-        <Link to="/library" style={{ textDecoration: "underline" }}>Library</Link>.
+        {isDesktop() ? (
+          <>This computer hosts the library. Members see their photos on the phone app or in a
+            browser; "View as member…" (top right) shows a member's library here.</>
+        ) : (
+          <>This server hosts the library. Manage it here; browse yours in the{" "}
+            <Link to="/library" style={{ textDecoration: "underline" }}>Library</Link>.</>
+        )}
         {isDesktop() && !showSetup && (
           <> · <button style={{ padding: "2px 8px", fontSize: 12 }} onClick={() => setForceSetup(true)}>Run setup again</button></>
         )}
@@ -169,12 +174,17 @@ export default function Console() {
 
       <RedundancyBackup />
 
-      <h2 className="settings-heading">Storage</h2>
-      <div className="settings-card row">
-        <Link to="/duplicates"><button>Find duplicate photos</button></Link>
-        <Link to="/trash"><button>Trash</button></Link>
-        <Link to="/stats"><button>Dashboard</button></Link>
-      </div>
+      {/* per-account views: on the desktop the administrator has no library of their own */}
+      {!isDesktop() && (
+        <>
+          <h2 className="settings-heading">Storage</h2>
+          <div className="settings-card row">
+            <Link to="/duplicates"><button>Find duplicate photos</button></Link>
+            <Link to="/trash"><button>Trash</button></Link>
+            <Link to="/stats"><button>Dashboard</button></Link>
+          </div>
+        </>
+      )}
     </div>
   );
 }

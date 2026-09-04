@@ -29,6 +29,9 @@ export const MEMBER_VIEW = "pb_member_view";
 export const isMemberView = () => isDesktop() && sessionStorage.getItem(MEMBER_VIEW) === "1";
 /** The administrator's controls belong to an admin account outside the member view. */
 export const isAdminHere = (user: User) => user.is_admin && !isMemberView();
+/** Desktop administrator: the Console is the whole app. The administrator has no library
+ *  of their own here - members' photos are seen through "View as member…". */
+export const isConsoleOnly = (user: User) => isDesktop() && isAdminHere(user);
 
 declare global {
   interface Window {
@@ -139,6 +142,16 @@ function NavBar({ user }: { user: User }) {
       await refreshSession(qc);
     }
   };
+  if (isConsoleOnly(user)) {
+    return (
+      <nav className="nav">
+        <span className="brand">Photobank<small>by CJ Villafuerte</small></span>
+        <span className="mono muted" style={{ fontSize: 10 }}>Administrator · this computer</span>
+        <span className="spacer" />
+        <button onClick={viewAsMember}>View as member…</button>
+      </nav>
+    );
+  }
   return (
     <nav className="nav">
       <span className="brand">Photobank<small>by CJ Villafuerte</small></span>
@@ -225,6 +238,19 @@ export default function App() {
   }
 
   const admin = isAdminHere(user);
+  if (isConsoleOnly(user)) {
+    return (
+      <UserContext.Provider value={user}>
+        <ToastProvider>
+          <NavBar user={user} />
+          <Routes>
+            <Route path="/console" element={<Console />} />
+            <Route path="*" element={<Navigate to="/console" replace />} />
+          </Routes>
+        </ToastProvider>
+      </UserContext.Provider>
+    );
+  }
   return (
     <UserContext.Provider value={user}>
       <ToastProvider>
@@ -232,11 +258,7 @@ export default function App() {
         <DemoBanner />
         <ApiErrorToaster />
         <Routes>
-          {/* admins on the desktop app land on the Console; everyone else on the library */}
-          <Route
-            path="/"
-            element={admin && isDesktop() ? <Navigate to="/console" replace /> : <Timeline favorites={false} />}
-          />
+          <Route path="/" element={<Timeline favorites={false} />} />
           <Route path="/library" element={<Timeline favorites={false} />} />
           {admin && <Route path="/console" element={<Console />} />}
           <Route path="/favorites" element={<Timeline favorites={true} />} />
