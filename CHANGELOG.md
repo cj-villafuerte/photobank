@@ -27,7 +27,16 @@
   Session switches now refetch instead of clearing the query cache (which never re-rendered).
 - Desktop: the administrator's app is the Console only - no Library / Albums / Search /
   Duplicates / Dashboard / Trash / Settings for an account that owns no photos here. The
-  nav is brand + "View as member…"; every route lands on the Console.
+  nav is brand + "View as member…"; every route lands on the Console, and the window
+  always opens on it (the administrator is signed in before anything renders).
+- iPhone: the Library's source filter only chooses which photos show - "Phone only" is
+  exactly that, and a backed-up photo is always its server copy with favorites, albums
+  and playback. Backing up from a phone-only photo's viewer hands over to the regular
+  viewer. A connection watchdog sends the app back to the setup screen with the reason
+  when the server stops answering or the sign-in is revoked; on app open an unreachable
+  server does the same. Server discovery stops after 60 s with a tap-to-retry card.
+  "Change password" in Settings (not on the demo server). The three typefaces are bundled
+  (`mobile/assets/google_fonts`, OFL) - the app never contacts Google Fonts.
 - iOS: `NSAllowsArbitraryLoads` removed (LAN HTTP only), `CFBundleName` = Photobank,
   export-compliance flag set; bundle ids are `com.cjvillafuerte.photobank`.
 - Branding: made by CJ Villafuerte.

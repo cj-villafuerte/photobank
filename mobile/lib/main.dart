@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:background_fetch/background_fetch.dart';
 import 'package:bonsoir/bonsoir.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -21,6 +22,8 @@ import 'theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // the typefaces ship in assets/google_fonts; nothing is ever fetched from Google
+  GoogleFonts.config.allowRuntimeFetching = false;
   // decoded thumbnails live in RAM only; keep that bounded on a phone
   PaintingBinding.instance.imageCache.maximumSizeBytes = 64 << 20;
   PaintingBinding.instance.imageCache.maximumSize = 600;

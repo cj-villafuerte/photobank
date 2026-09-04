@@ -498,6 +498,13 @@ class PhotobankApi {
         .toList();
   }
 
+  /// One asset by id (e.g. the server copy of a photo that was just backed up).
+  Future<RemoteAsset> asset(String id) async {
+    final res = await http.get(_u('/api/assets/$id'), headers: _headers);
+    if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));
+    return RemoteAsset.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   Future<List<RemoteAsset>> bucketAssets(String bucket) async {
     final res = await http.get(_u('/api/timeline/bucket/$bucket'), headers: _headers);
     if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));

@@ -19,10 +19,10 @@ devices you control.**
 
 ## The one outside request: fonts
 
-The web app and the iPhone app load their typefaces (Bricolage Grotesque, Instrument Sans,
-DM Mono) from Google Fonts when they start. Like any web font, that request shows Google your
-IP address and nothing else about you or your library. Nothing else in Photobank contacts a
-third party.
+The web app loads its typefaces (Bricolage Grotesque, Instrument Sans, DM Mono) from Google
+Fonts when it opens in a browser. Like any web font, that request shows Google your IP
+address and nothing else about you or your library. The iPhone app ships the same typefaces
+inside the app and makes no such request. Nothing else in Photobank contacts a third party.
 
 ## Public demo server
 

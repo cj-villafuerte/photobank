@@ -408,9 +408,11 @@ class SyncService {
   /// Back up one device photo right now (from the Library's phone-only viewer).
   /// Same path as the full sync: fetch, fingerprint, skip if the server has it,
   /// otherwise upload (plus the Live Photo video), then record it as synced.
-  Future<bool> backUpOne(AssetEntity asset, {void Function(int sent, int total)? onProgress}) async {
+  /// Returns the server copy's id ('' from a server too old to say which), or null
+  /// when the photo could not be read from the phone.
+  Future<String?> backUpOne(AssetEntity asset, {void Function(int sent, int total)? onProgress}) async {
     final file = await _fetchOriginal(asset, timeout: const Duration(minutes: 3));
-    if (file == null) return false;
+    if (file == null) return null;
     try {
       final checksum = await _sha256OfFile(file);
       final existing = await api.existingChecksums([checksum]);
@@ -437,7 +439,7 @@ class SyncService {
       }
       _synced[asset.id] = checksum;
       await _save();
-      return true;
+      return serverId ?? '';
     } finally {
       _discardCopy(file);
     }

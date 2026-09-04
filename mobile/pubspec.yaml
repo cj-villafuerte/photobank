@@ -46,3 +46,7 @@ flutter_launcher_icons:
 
 flutter:
   uses-material-design: true
+  assets:
+    # the three typefaces, bundled: google_fonts loads Family-Variant.ttf from here and
+    # never fetches from fonts.gstatic.com (offline first launch, nothing leaves the phone)
+    - assets/google_fonts/

@@ -115,30 +115,36 @@ jobs:
                   out.seek(0)
                   return out.read().decode(errors="replace")
 
-          deadline = time.time() + 150
+          # the dialog can appear late (the companion's first query alone can take 25 s), so
+          # the loop covers the whole drive; every line is stamped so a dead tapper is visible
+          t0 = time.time()
+          def log(msg):
+              print(f"[{time.time() - t0:6.1f}s] {msg}", flush=True)
+          deadline = t0 + 600
           while time.time() < deadline:
               try:
                   raw = run(["idb", "ui", "describe-all", "--udid", udid, "--json"], 25)
                   s = raw.strip()
                   items = json.loads(s) if s.startswith("[") else [json.loads(l) for l in s.splitlines() if l.strip().startswith("{")]
-                  labels = [str(it.get("AXLabel") or it.get("title") or "") for it in items]
                   hit = next((it for it in items if str(it.get("AXLabel") or it.get("title") or "") in wanted), None)
                   if hit:
                       f = hit["frame"]
                       x, y = int(f["x"] + f["width"] / 2), int(f["y"] + f["height"] / 2)
                       run(["idb", "ui", "tap", "--udid", udid, str(x), str(y)], 25)
-                      print(f"tapped '{hit.get('AXLabel')}' at {x},{y}", flush=True)
+                      log(f"tapped '{hit.get('AXLabel')}' at {x},{y}")
                       sys.exit(0)
-                  print(f"no dialog yet ({len(items)} elements)", flush=True)
+                  log(f"no dialog yet ({len(items)} elements)")
               except Exception as e:
-                  print("tapper:", type(e).__name__, str(e)[:160], flush=True)
+                  log(f"tapper: {type(e).__name__} {str(e)[:160]}")
               time.sleep(1.5)
-          print("tapper: gave up - no permission dialog seen", flush=True)
+          log("tapper: gave up - no permission dialog seen")
           EOF
           xcrun simctl launch "$UDID" "$BUNDLE_ID" \
             --enable-dart-profiling --disable-service-auth-codes \
             --vm-service-port=54321 --observatory-port=54321
-          PATH="$HOME/.local/bin:$PATH" python3 diag/tap_allow.py > diag/tapper.log 2>&1 &
+          # detached from this step's shell: it must still be polling minutes from now,
+          # during the drive step (one run lost the tapper right after this step ended)
+          PATH="$HOME/.local/bin:$PATH" nohup setsid python3 diag/tap_allow.py > diag/tapper.log 2>&1 < /dev/null &
           echo "TAPPID=$!" >> "$GITHUB_ENV"
           for i in $(seq 1 60); do
             curl -sf "http://127.0.0.1:54321/" >/dev/null 2>&1 && { echo "VM service up after ${i}s"; break; }

@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show Uint8List, ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodCall;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -68,8 +70,11 @@ class LibraryPage extends StatefulWidget {
   State<LibraryPage> createState() => _LibraryPageState();
 }
 
-class _LibraryPageState extends State<LibraryPage> {
+class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
   List<TimelineBucket>? _buckets;
+  // the camera roll changes under us (a photo just taken, one deleted): re-read it,
+  // coalescing the burst of notifications a single capture produces
+  Timer? _phoneDebounce;
   String? _error;
   final Map<String, List<RemoteAsset>> _loaded = {};
   String _sort = 'date'; // date | size_desc | size_asc
@@ -104,6 +109,20 @@ class _LibraryPageState extends State<LibraryPage> {
     });
     _load();
     widget.refresh?.addListener(_reload);
+    WidgetsBinding.instance.addObserver(this);
+    PhotoManager.addChangeCallback(_onPhotoLibraryChange);
+    PhotoManager.startChangeNotify();
+  }
+
+  void _onPhotoLibraryChange(MethodCall call) {
+    _phoneDebounce?.cancel();
+    _phoneDebounce = Timer(const Duration(milliseconds: 600), _loadPhone);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // back from the Camera app (or anywhere): whatever was taken meanwhile shows up
+    if (state == AppLifecycleState.resumed) _loadPhone();
   }
 
   Future<void> _setSource(String s) async {
@@ -170,6 +189,10 @@ class _LibraryPageState extends State<LibraryPage> {
 
   @override
   void dispose() {
+    _phoneDebounce?.cancel();
+    PhotoManager.removeChangeCallback(_onPhotoLibraryChange);
+    PhotoManager.stopChangeNotify();
+    WidgetsBinding.instance.removeObserver(this);
     widget.refresh?.removeListener(_reload);
     super.dispose();
   }
@@ -671,17 +694,32 @@ class _LocalPhotoViewerState extends State<_LocalPhotoViewer> {
     try {
       final service = SyncService(widget.api);
       await service.init();
-      final ok = await service.backUpOne(widget.entity, onProgress: (sent, total) {
+      final serverId = await service.backUpOne(widget.entity, onProgress: (sent, total) {
         if (total > 0 && mounted) setState(() => _pct = sent / total);
       });
       if (!mounted) return;
-      if (ok) {
-        setState(() => _synced = true);
-        widget.onBackedUp?.call();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backed up - it is on the server now')));
-      } else {
+      if (serverId == null) {
         setState(() => _error = 'Could not read this photo from the phone (still downloading from iCloud?).');
+        return;
       }
+      setState(() => _synced = true);
+      widget.onBackedUp?.call();
+      // it is a server photo now: hand over to the regular viewer (favorite, albums,
+      // menu) in place of this screen, instead of lingering on a "backed up" note
+      if (serverId.isNotEmpty) {
+        try {
+          final remote = await widget.api.asset(serverId);
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            viewerRoute(AssetViewer(api: widget.api, assets: [remote], initialIndex: 0)),
+          );
+          return;
+        } catch (_) {
+          // thumbnail may still be processing or the fetch failed: the note below stands
+        }
+      }
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backed up - it is on the server now')));
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
