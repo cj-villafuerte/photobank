@@ -5,7 +5,6 @@ import 'package:bonsoir/bonsoir.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'accounts.dart';
@@ -1073,17 +1072,9 @@ class _SyncPageState extends State<SyncPage> {
             (stats.backedUp + progress.uploaded + progress.skipped).clamp(0, stats.totalOnDevice).toInt())
         : stats;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Photobank'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.open_in_browser),
-            tooltip: 'Open web app',
-            onPressed: () => launchUrl(Uri.parse(widget.api.baseUrl), mode: LaunchMode.externalApplication),
-          ),
-          IconButton(icon: const Icon(Icons.logout), tooltip: 'Log out', onPressed: () => widget.onLogout()),
-        ],
-      ),
+      // no actions up here: the server's web page is not this app's business, and
+      // logging out lives in Settings
+      appBar: AppBar(title: const Text('Photobank')),
       body: _permissionDenied
           ? const Center(
               child: Padding(
