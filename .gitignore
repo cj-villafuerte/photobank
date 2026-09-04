@@ -8,6 +8,13 @@ web/dist/
 # private checklist
 TODO.md
 
+# Apple certificates / keys / profiles - never in the repo
+*.cer
+*.p8
+*.p12
+*.mobileprovision
+*.certSigningRequest
+
 # downloaded by scripts/make_icons.py
 assets/.fontcache/
 
