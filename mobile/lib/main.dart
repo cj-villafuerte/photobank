@@ -99,6 +99,21 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _tab = 0;
+  // Bumped when the server library changed under us (a backup uploaded something) or
+  // the Library tab is reopened after a while; LibraryPage re-reads on every bump.
+  final _libraryRefresh = ValueNotifier<int>(0);
+  DateTime _libraryFresh = DateTime.now();
+
+  void _touchLibrary() {
+    _libraryFresh = DateTime.now();
+    _libraryRefresh.value++;
+  }
+
+  @override
+  void dispose() {
+    _libraryRefresh.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -117,7 +132,7 @@ class _HomeShellState extends State<HomeShell> {
       body: IndexedStack(
         index: _tab,
         children: [
-          SyncPage(api: widget.api, onLogout: widget.onLogout),
+          SyncPage(api: widget.api, onLogout: widget.onLogout, onLibraryChanged: _touchLibrary),
           Scaffold(
             appBar: AppBar(
               title: const Text('Library'),
@@ -130,7 +145,7 @@ class _HomeShellState extends State<HomeShell> {
                 ),
               ],
             ),
-            body: LibraryPage(api: widget.api),
+            body: LibraryPage(api: widget.api, refresh: _libraryRefresh),
           ),
           SearchPage(api: widget.api),
           StatsPage(api: widget.api),
@@ -140,7 +155,12 @@ class _HomeShellState extends State<HomeShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        onDestinationSelected: (i) => setState(() => _tab = i),
+        onDestinationSelected: (i) {
+          if (i == 1 && _tab != 1 && DateTime.now().difference(_libraryFresh) > const Duration(minutes: 2)) {
+            _touchLibrary(); // coming back to the library after a while: pick up what changed
+          }
+          setState(() => _tab = i);
+        },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.cloud_upload_outlined), selectedIcon: Icon(Icons.cloud_upload), label: 'Backup'),
           NavigationDestination(icon: Icon(Icons.photo_library_outlined), selectedIcon: Icon(Icons.photo_library), label: 'Library'),
@@ -482,7 +502,8 @@ class _LoginSheetState extends State<_LoginSheet> {
 class SyncPage extends StatefulWidget {
   final PhotobankApi api;
   final Future<void> Function() onLogout;
-  const SyncPage({super.key, required this.api, required this.onLogout});
+  final VoidCallback? onLibraryChanged; // a backup put new items on the server
+  const SyncPage({super.key, required this.api, required this.onLogout, this.onLibraryChanged});
   @override
   State<SyncPage> createState() => _SyncPageState();
 }
@@ -586,11 +607,12 @@ class _SyncPageState extends State<SyncPage> {
           });
         }
       }
-      if (last != null) {
+      if (last != null && last.total > 0) {
         _lastResult = _service.cancelRequested
             ? 'Sync stopped - ${last.uploaded} uploaded before stopping.'
             : 'Done: ${last.uploaded} uploaded, ${last.skipped} already backed up'
               '${last.failed > 0 ? ', ${last.failed} failed' : ''}.';
+        if (last.uploaded > 0) widget.onLibraryChanged?.call(); // the Library tab re-reads
       } else {
         _lastResult = 'Everything is already backed up.';
       }
@@ -707,6 +729,12 @@ class _SyncPageState extends State<SyncPage> {
   @override
   Widget build(BuildContext context) {
     final stats = _stats;
+    // while a backup runs, count what has already landed instead of waiting for the end
+    final progress = _progress;
+    final live = (stats != null && _syncing && progress != null)
+        ? DeviceStats(stats.totalOnDevice,
+            (stats.backedUp + progress.uploaded + progress.skipped).clamp(0, stats.totalOnDevice))
+        : stats;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Photobank'),
@@ -740,11 +768,11 @@ class _SyncPageState extends State<SyncPage> {
                       const SizedBox(height: 10),
                       Row(
                         children: [
-                          _statCard('On this phone', '${stats.totalOnDevice}'),
+                          _statCard('On this phone', '${live!.totalOnDevice}'),
                           const SizedBox(width: 12),
-                          _statCard('Backed up', '${stats.backedUp}'),
+                          _statCard('Backed up', '${live.backedUp}'),
                           const SizedBox(width: 12),
-                          _statCard('To sync', '${stats.pending}'),
+                          _statCard('To sync', '${live.pending}'),
                         ],
                       ),
                       const SizedBox(height: 24),

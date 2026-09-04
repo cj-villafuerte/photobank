@@ -35,7 +35,10 @@ Widget thumbTile(PhotobankApi api, RemoteAsset a) {
 /// individual photos/videos back to this phone's camera roll.
 class LibraryPage extends StatefulWidget {
   final PhotobankApi api;
-  const LibraryPage({super.key, required this.api});
+  /// Bumped by the shell when the server library changed (a backup finished) or the
+  /// tab is reopened after a while; the page re-reads without blanking.
+  final ValueListenable<int>? refresh;
+  const LibraryPage({super.key, required this.api, this.refresh});
   @override
   State<LibraryPage> createState() => _LibraryPageState();
 }
@@ -62,6 +65,40 @@ class _LibraryPageState extends State<LibraryPage> {
       }
     });
     _load();
+    widget.refresh?.addListener(_reload);
+  }
+
+  @override
+  void dispose() {
+    widget.refresh?.removeListener(_reload);
+    super.dispose();
+  }
+
+  /// Re-read the server while keeping what's on screen (no spinner flash).
+  Future<void> _reload() async {
+    if (!mounted) return;
+    try {
+      if (_sort == 'date') {
+        final buckets =
+            _favorites ? await widget.api.favoriteBuckets() : await widget.api.buckets();
+        if (mounted) {
+          setState(() {
+            _buckets = buckets;
+            _loaded.clear(); // month sections fetch again as they show
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _sizeAssets = [];
+            _sizeHasMore = true;
+          });
+        }
+        await _loadMoreBySize();
+      }
+    } catch (_) {
+      // keep the current view; the next explicit load surfaces errors
+    }
   }
 
   Future<void> _saveCollapsed() async {

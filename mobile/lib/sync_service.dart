@@ -95,7 +95,8 @@ class SyncService {
     _synced.removeWhere((id, _) => !byId.containsKey(id));
 
     // 2. metadata-match the rest so an outdated index does not re-sync
-    final unknown = assets.where((a) => !_synced.containsKey(a.id)).toList();
+    //    (the demo server never reports matches - skip the per-photo prep there)
+    final unknown = api.demo == null ? assets.where((a) => !_synced.containsKey(a.id)).toList() : <AssetEntity>[];
     if (unknown.isNotEmpty) {
       onStatus?.call('matching ${unknown.length} items against the server…');
       final items = <Map<String, dynamic>>[];
@@ -233,6 +234,9 @@ class SyncService {
     bool oldestFirst = false,
   }) async* {
     cancelRequested = false;
+    // show something at once: the reconcile below can take a while on a big camera roll
+    yield const SyncProgress(0, 0, 0, 0, 0, '');
+    onStatus?.call('preparing…');
     await _purgePluginCache(); // stale copies from an interrupted earlier run
     onStatus?.call('reconciling with server…');
     await reconcile(force: true, onStatus: onStatus);
