@@ -420,6 +420,11 @@ class _SetupPageState extends State<SetupPage> {
     super.dispose();
   }
 
+  /// A card's trailing widget: a spinner while that server is being contacted.
+  Widget _trailing(String url) => _connecting == url
+      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+      : const Icon(Icons.chevron_right);
+
   String _normalizedManualUrl() {
     var url = _url.text.trim();
     if (url.endsWith('/')) url = url.substring(0, url.length - 1);
@@ -427,19 +432,26 @@ class _SetupPageState extends State<SetupPage> {
     return url;
   }
 
+  // the server being contacted right now: its card shows a spinner and every other
+  // tap is off until it answers (or the 8 s health check gives up)
+  String? _connecting;
+
   Future<void> _loginTo(String url, String serverLabel) async {
-    // pause mDNS traffic while talking to the server
+    if (_connecting != null) return;
+    setState(() => _connecting = url);
     final api = PhotobankApi(baseUrl: url);
     try {
       await api.checkHealth();
     } catch (_) {
       if (!mounted) return;
+      setState(() => _connecting = null);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Cannot reach $serverLabel - is the phone on the same Wi-Fi?'),
+        content: Text('Cannot reach $serverLabel right now - is it open, and is this phone on the same Wi-Fi?'),
       ));
       return;
     }
     if (!mounted) return;
+    setState(() => _connecting = null);
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -546,8 +558,9 @@ class _SetupPageState extends State<SetupPage> {
                     child: ListTile(
                       leading: const Icon(Icons.computer),
                       title: Text(s.name),
-                      subtitle: const Text('On this Wi-Fi'),
-                      trailing: const Icon(Icons.chevron_right),
+                      subtitle: Text(_connecting == s.url ? 'Connecting…' : 'On this Wi-Fi'),
+                      trailing: _trailing(s.url),
+                      enabled: _connecting == null,
                       onTap: () => _loginTo(s.url, s.name),
                     ),
                   ),
@@ -559,8 +572,9 @@ class _SetupPageState extends State<SetupPage> {
                       child: ListTile(
                         leading: const Icon(Icons.history),
                         title: Text(s.displayName),
-                        subtitle: Text(s.email),
-                        trailing: const Icon(Icons.chevron_right),
+                        subtitle: Text(_connecting == s.server ? 'Connecting…' : s.email),
+                        trailing: _trailing(s.server),
+                        enabled: _connecting == null,
                         onTap: () => _loginTo(s.server, s.displayName),
                       ),
                     ),
@@ -570,8 +584,11 @@ class _SetupPageState extends State<SetupPage> {
                   child: ListTile(
                     leading: const Icon(Icons.explore_outlined),
                     title: const Text('Try the demo'),
-                    subtitle: const Text('A public sample library - nothing on this phone is changed'),
-                    trailing: const Icon(Icons.chevron_right),
+                    subtitle: Text(_connecting == demoServerUrl
+                        ? 'Connecting…'
+                        : 'A public sample library - nothing on this phone is changed'),
+                    trailing: _trailing(demoServerUrl),
+                    enabled: _connecting == null,
                     onTap: () => _loginTo(demoServerUrl, 'the demo server'),
                   ),
                 ),
@@ -604,8 +621,13 @@ class _SetupPageState extends State<SetupPage> {
                   ),
                   const SizedBox(height: 12),
                   FilledButton(
-                    onPressed: () => _loginTo(_normalizedManualUrl(), Uri.tryParse(_normalizedManualUrl())?.host ?? _normalizedManualUrl()),
-                    child: const Padding(padding: EdgeInsets.all(12), child: Text('Connect')),
+                    onPressed: _connecting != null
+                        ? null
+                        : () => _loginTo(_normalizedManualUrl(), Uri.tryParse(_normalizedManualUrl())?.host ?? _normalizedManualUrl()),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(_connecting != null && _connecting == _normalizedManualUrl() ? 'Connecting…' : 'Connect'),
+                    ),
                   ),
                 ],
               ],
