@@ -17,6 +17,10 @@ import Console from "./pages/Console";
 /** Running inside the desktop app's window (pywebview injects this). */
 export const isDesktop = () => typeof window !== "undefined" && !!window.pywebview;
 
+/** sessionStorage flag: the desktop administrator chose "View as member…", so the
+ *  next login screen is a member sign-in (kept out of the URL - redirects would drop it). */
+export const LOGIN_AS_MEMBER = "pb_login_as_member";
+
 declare global {
   interface Window {
     pywebview?: {
@@ -96,17 +100,22 @@ function ApiErrorToaster() {
 function NavBar({ user }: { user: User }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const logout = async (to = "/login") => {
+  // No navigate() here: `me` updates on a later tick than the awaited refresh, and
+  // the router's catch-all redirects against whoever it currently thinks we are.
+  // Once `me` is 401 the logged-out routes take over and land on /login themselves.
+  const logout = async () => {
     await api.logout();
-    navigate(to);
-    await refreshSession(qc); // me -> 401 -> the login screen renders
+    await refreshSession(qc);
   };
   // desktop: the member's library shows in this same window, as they see it themselves
-  const viewAsMember = () => logout("/login?as=member");
+  const viewAsMember = () => {
+    sessionStorage.setItem(LOGIN_AS_MEMBER, "1");
+    return logout();
+  };
   const openConsole = async () => {
     if (await localAdminLogin()) {
-      navigate("/console");
       await refreshSession(qc);
+      navigate("/console"); // either order ends on the Console for a desktop admin
     }
   };
   return (

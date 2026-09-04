@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
-import { isDesktop, localAdminLogin, refreshSession } from "../App";
+import { LOGIN_AS_MEMBER, isDesktop, localAdminLogin, refreshSession } from "../App";
 import { useDemo } from "../demo";
 
 export default function Login() {
@@ -16,13 +16,13 @@ export default function Login() {
   const navigate = useNavigate();
   const demo = useDemo();
   // desktop "View as member…": a member signs in here and sees their library in this window
-  const [params] = useSearchParams();
-  const asMember = isDesktop() && params.get("as") === "member";
+  const asMember = isDesktop() && sessionStorage.getItem(LOGIN_AS_MEMBER) === "1";
 
   const openConsole = async () => {
+    sessionStorage.removeItem(LOGIN_AS_MEMBER);
     if (await localAdminLogin()) {
-      navigate("/console");
       await refreshSession(qc);
+      navigate("/console");
     }
   };
 
@@ -42,7 +42,9 @@ export default function Login() {
     try {
       if (mode === "login") await api.login(email, password);
       else await api.register(email, password, displayName);
-      navigate(asMember ? "/library" : "/");
+      sessionStorage.removeItem(LOGIN_AS_MEMBER);
+      // no navigate(): once `me` is refreshed the signed-in routes take over and
+      // their catch-all sends us home (library, or the Console for a desktop admin)
       await refreshSession(qc);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
