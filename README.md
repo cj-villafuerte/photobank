@@ -9,6 +9,8 @@ server automatically, backs up your camera roll, and can free space on the phone
 
 Free and open source (MIT), made by **CJ Villafuerte**. No telemetry — see [PRIVACY.md](PRIVACY.md).
 
+**Website:** https://cj-villafuerte.github.io/photobank/ — downloads, how it works, features (source in [`site/`](site/)).
+
 ## Try it
 
 **Live demo:** https://photobank-demo-production.up.railway.app — the login is prefilled.
