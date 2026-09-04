@@ -415,39 +415,64 @@ class _LibraryPageState extends State<LibraryPage> {
         ),
       );
     }
-    final sortBar = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 8, 0),
+    // One quiet row: where the photos come from (the everyday choice) on the left; sort,
+    // favorites and folding behind a single "view options" menu on the right.
+    final controls = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
       child: Row(
         children: [
           Expanded(
-            child: SegmentedButton<String>(
-              showSelectedIcon: false,
-              segments: const [
-                ButtonSegment(value: 'date', label: Text('Date')),
-                ButtonSegment(value: 'size_desc', label: Text('Largest')),
-                ButtonSegment(value: 'size_asc', label: Text('Smallest')),
-              ],
-              selected: {_sort},
-              onSelectionChanged: (sel) {
-                setState(() => _sort = sel.first);
-                _load();
-              },
-            ),
+            child: _sort == 'date'
+                ? SegmentedButton<String>(
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                    segments: const [
+                      ButtonSegment(value: 'all', label: Text('All')),
+                      ButtonSegment(value: 'server', icon: Icon(Icons.cloud_done_outlined, size: 16), label: Text('Server')),
+                      ButtonSegment(value: 'phone', icon: Icon(Icons.smartphone, size: 16), label: Text('Phone')),
+                    ],
+                    selected: {_source},
+                    onSelectionChanged: (sel) => _setSource(sel.first),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      _sort == 'size_desc' ? 'LARGEST FIRST  ·  SERVER' : 'SMALLEST FIRST  ·  SERVER',
+                      style: pbMono(size: 10),
+                    ),
+                  ),
           ),
-          if (_sort == 'date')
-            IconButton(
-              tooltip: _collapsed.isEmpty ? 'Collapse all months' : 'Expand all months',
-              icon: Icon(_collapsed.isEmpty ? Icons.unfold_less : Icons.unfold_more),
-              onPressed: () => _setAllCollapsed(_collapsed.isEmpty),
+          if (_favorites)
+            const Padding(
+              padding: EdgeInsets.only(left: 6),
+              child: Icon(Icons.favorite, size: 16, color: PbColors.accent),
             ),
-          IconButton(
-            tooltip: _favorites ? 'Showing favorites' : 'Favorites only',
-            icon: Icon(_favorites ? Icons.favorite : Icons.favorite_border,
-                color: _favorites ? Colors.redAccent : null),
-            onPressed: () {
-              setState(() => _favorites = !_favorites);
-              _load();
+          PopupMenuButton<String>(
+            tooltip: 'View options',
+            icon: const Icon(Icons.tune),
+            onSelected: (v) {
+              switch (v) {
+                case 'date':
+                case 'size_desc':
+                case 'size_asc':
+                  setState(() => _sort = v);
+                  _load();
+                case 'favorites':
+                  setState(() => _favorites = !_favorites);
+                  _load();
+                case 'fold':
+                  _setAllCollapsed(_collapsed.isEmpty);
+              }
             },
+            itemBuilder: (_) => [
+              CheckedPopupMenuItem(value: 'date', checked: _sort == 'date', child: const Text('By date')),
+              CheckedPopupMenuItem(value: 'size_desc', checked: _sort == 'size_desc', child: const Text('Largest first')),
+              CheckedPopupMenuItem(value: 'size_asc', checked: _sort == 'size_asc', child: const Text('Smallest first')),
+              const PopupMenuDivider(),
+              CheckedPopupMenuItem(value: 'favorites', checked: _favorites, child: const Text('Favorites only')),
+              if (_sort == 'date')
+                PopupMenuItem(value: 'fold', child: Text(_collapsed.isEmpty ? 'Collapse all months' : 'Expand all months')),
+            ],
           ),
         ],
       ),
@@ -456,7 +481,7 @@ class _LibraryPageState extends State<LibraryPage> {
     if (_sort != 'date') {
       return Column(
         children: [
-          sortBar,
+          controls,
           Expanded(
             child: _sizeAssets.isEmpty && _sizeLoading
                 ? const Center(child: CircularProgressIndicator())
@@ -517,26 +542,11 @@ class _LibraryPageState extends State<LibraryPage> {
     final buckets = _buckets;
     if (buckets == null && _source != 'phone') return const Center(child: CircularProgressIndicator());
 
-    final sourceBar = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: SegmentedButton<String>(
-        showSelectedIcon: false,
-        segments: const [
-          ButtonSegment(value: 'all', label: Text('All')),
-          ButtonSegment(value: 'server', icon: Icon(Icons.cloud_done_outlined, size: 16), label: Text('Server')),
-          ButtonSegment(value: 'phone', icon: Icon(Icons.smartphone, size: 16), label: Text('Phone')),
-        ],
-        selected: {_source},
-        onSelectionChanged: (sel) => _setSource(sel.first),
-      ),
-    );
-
     final rows = _rows();
     if (rows.isEmpty) {
       return Column(
         children: [
-          sortBar,
-          sourceBar,
+          controls,
           Expanded(
             child: Center(
               child: Text(_source == 'phone'
@@ -554,8 +564,7 @@ class _LibraryPageState extends State<LibraryPage> {
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          SliverToBoxAdapter(child: sortBar),
-          SliverToBoxAdapter(child: sourceBar),
+          SliverToBoxAdapter(child: controls),
           for (final row in rows) ...[
             SliverToBoxAdapter(
               child: _MonthHeader(
