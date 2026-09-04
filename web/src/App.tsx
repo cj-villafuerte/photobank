@@ -138,6 +138,9 @@ function NavBar({ user }: { user: User }) {
       <NavLink to="/search" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
         Search
       </NavLink>
+      <NavLink to="/duplicates" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
+        Duplicates
+      </NavLink>
       <NavLink to="/stats" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
         Dashboard
       </NavLink>
