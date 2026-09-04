@@ -1,0 +1,26 @@
+Photobank keeps your photos on your own computer - not in somebody else's cloud.
+
+Run the free Photobank server on a Windows PC or Mac at home (it's a normal app, no Docker or setup). This app finds it on your Wi-Fi, backs up your camera roll to it, and lets you browse the whole library from your phone.
+
+BACK UP, THEN FREE UP SPACE
+- Every photo and video is uploaded once and verified by checksum.
+- Live Photos keep their motion.
+- Background backup continues while the phone charges.
+- "Free up space" removes backed-up items from the phone - but only ones the server has just confirmed it still holds, and only after you approve the exact count. Keep the last few months on the phone, or keep nothing; your choice.
+
+YOUR WHOLE LIBRARY, FROM THE COUCH
+- Timeline by month, favorites, albums, and the largest files first when you need room.
+- Search finds text inside your photos (receipts, signs, screenshots).
+- Find visually similar duplicates and clean them up.
+- Save anything back to the phone with one tap.
+
+PRIVATE BY CONSTRUCTION
+- Photos travel from your phone to your computer over your home network. There is no Photobank cloud, no account with us, no analytics.
+- Everything is open source (MIT) - you can read exactly what it does.
+- Away from home? Use a VPN such as Tailscale to reach your server; nothing needs to be exposed to the internet.
+
+WHAT YOU NEED
+- The free Photobank server for Windows or macOS (link on the support page).
+- The phone and the computer on the same Wi-Fi for the first backup.
+
+Try it without installing anything: enter the public demo server address from the support page on the first screen.

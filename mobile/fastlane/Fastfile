@@ -1,0 +1,116 @@
+# App Store Connect automation. Run from GitHub Actions (appstore-metadata.yml) or
+# locally on a Mac: `cd mobile && bundle install && bundle exec fastlane ios metadata`.
+# Auth: ASC_KEY_ID / ASC_ISSUER_ID / ASC_API_KEY_P8_BASE64 (same secrets as the
+# TestFlight workflow). Contact for App Review: REVIEW_CONTACT_PHONE (E.164, e.g. +63...).
+
+default_platform(:ios)
+
+CONTACT_FIRST = "CJ"
+CONTACT_LAST = "Villafuerte"
+CONTACT_EMAIL = "cjvillafuerte02@gmail.com"
+DEMO_URL = "https://photobank-demo-production.up.railway.app"
+DEMO_USER = "demo@photobank.app"
+DEMO_PASSWORD = ENV["DEMO_PASSWORD"] || "demo-photobank-2026"
+
+def asc_key
+  app_store_connect_api_key(
+    key_id: ENV.fetch("ASC_KEY_ID"),
+    issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+    key_content: ENV.fetch("ASC_API_KEY_P8_BASE64"),
+    is_key_content_base64: true,
+    in_house: false,
+  )
+end
+
+def review_notes
+  File.read(File.join(__dir__, "review_notes.txt"))
+      .gsub("{DEMO_URL}", DEMO_URL).gsub("{DEMO_USER}", DEMO_USER).gsub("{DEMO_PASSWORD}", DEMO_PASSWORD)
+end
+
+def review_info
+  info = {
+    first_name: CONTACT_FIRST,
+    last_name: CONTACT_LAST,
+    email_address: CONTACT_EMAIL,
+    demo_user: DEMO_USER,
+    demo_password: DEMO_PASSWORD,
+    notes: review_notes,
+  }
+  info[:phone_number] = ENV["REVIEW_CONTACT_PHONE"] if ENV["REVIEW_CONTACT_PHONE"].to_s != ""
+  info
+end
+
+platform :ios do
+  desc "Push the App Store listing (text, URLs, categories), review info and privacy details. No binary."
+  lane :metadata do
+    key = asc_key
+    version = ENV["APP_VERSION"] || File.read("../pubspec.yaml")[/^version:\s*([\d.]+)/, 1]
+    UI.message("Listing for version #{version}")
+    deliver(
+      api_key: key,
+      app_version: version,            # creates the version in App Store Connect if it doesn't exist
+      metadata_path: "fastlane/metadata",
+      app_review_information: review_info,
+      skip_binary_upload: true,
+      skip_screenshots: true,
+      run_precheck_before_submit: false,
+      precheck_include_in_app_purchases: false,
+      force: true,                     # no HTML preview prompt (CI)
+    )
+    upload_app_privacy_details_to_app_store(
+      api_key: key,
+      json_path: "fastlane/app_privacy_details.json",
+      skip_publish: false,
+    )
+  end
+
+  desc "Upload screenshots from fastlane/screenshots/<locale>/ (metadata untouched)."
+  lane :screenshots do
+    deliver(
+      api_key: asc_key,
+      screenshots_path: "fastlane/screenshots",
+      overwrite_screenshots: true,
+      skip_binary_upload: true,
+      skip_metadata: true,
+      run_precheck_before_submit: false,
+      force: true,
+    )
+  end
+
+  desc "Distribute the latest processed TestFlight build to an external group with test info; optionally invite a tester."
+  lane :beta do |options|
+    key = asc_key
+    group = options[:group] || "Friends"
+    if options[:tester].to_s != ""
+      key_json = File.join(Dir.tmpdir, "asc_key.json")
+      File.write(key_json, {
+        key_id: ENV.fetch("ASC_KEY_ID"), issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+        key: Base64.decode64(ENV.fetch("ASC_API_KEY_P8_BASE64")), in_house: false,
+      }.to_json)
+      # creates the group if needed and sends the TestFlight invite once a build is enabled for it
+      sh("bundle exec fastlane pilot add #{options[:tester].shellescape} --groups #{group.shellescape} --api_key_path #{key_json.shellescape}")
+    end
+    review = {
+      contact_email: CONTACT_EMAIL,
+      contact_first_name: CONTACT_FIRST,
+      contact_last_name: CONTACT_LAST,
+      demo_account_name: DEMO_USER,
+      demo_account_password: DEMO_PASSWORD,
+      notes: review_notes,
+    }
+    review[:contact_phone] = ENV["REVIEW_CONTACT_PHONE"] if ENV["REVIEW_CONTACT_PHONE"].to_s != ""
+    upload_to_testflight(
+      api_key: key,
+      distribute_only: true,           # latest build already uploaded by the TestFlight workflow
+      distribute_external: true,
+      groups: [group],
+      notify_external_testers: true,
+      changelog: File.read("fastlane/whats_new.txt"),
+      beta_app_description: File.read("fastlane/beta_description.txt"),
+      beta_app_feedback_email: CONTACT_EMAIL,
+      demo_account_required: true,
+      beta_app_review_info: review,
+      submit_beta_review: true,        # first build of a version needs Apple's beta review
+    )
+  end
+end

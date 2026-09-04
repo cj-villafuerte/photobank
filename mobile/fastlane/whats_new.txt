@@ -1,0 +1,3 @@
+First TestFlight build.
+
+Try: connect to the demo server (address on the first screen), browse the sample library, back up a few photos (they are removed again after a minute on the demo), search, albums, favorites. On your own Photobank server, "Free up space" removes backed-up photos from the phone after the server confirms it has them.

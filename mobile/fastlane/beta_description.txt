@@ -1,0 +1,1 @@
+Photobank backs up your iPhone's camera roll to a photo server you run on your own computer - no cloud, no subscription. Browse the whole library from the phone, and free up space on the phone once the server has a verified copy. Testers can use the public demo server (address and login in the notes) or their own Photobank server on the same Wi-Fi.

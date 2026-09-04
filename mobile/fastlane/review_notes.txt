@@ -1,0 +1,6 @@
+Photobank is a companion app for a self-hosted photo server that people run on their own computer (open source: https://github.com/cj-villafuerte/photobank). It backs up the camera roll to that server over the home network.
+
+DEMO SERVER FOR REVIEW: {DEMO_URL}
+Enter that address on the first screen ("Enter address manually"), then log in with {DEMO_USER} / {DEMO_PASSWORD} (the fields are prefilled). The demo server is public and read-only: its sample library cannot be deleted, uploads are removed automatically after one minute, and "Free up space" is disabled against it, so nothing can be deleted from the review device.
+
+"Free up space" (on a normal server) removes photos from the phone only after the server has confirmed, by checksum, that it holds a copy; every run shows a confirmation with the exact count first, and iOS asks again. Background Fetch is used to continue backups while the phone charges. No analytics or third-party services are used; nothing is sent anywhere except the user's own server.

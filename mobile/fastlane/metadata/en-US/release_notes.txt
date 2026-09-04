@@ -1,0 +1,1 @@
+First release: camera-roll backup to your own Photobank server, verified free-up-space, Live Photos, library browsing with search, albums, favorites and duplicate finder.

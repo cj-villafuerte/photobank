@@ -1,0 +1,62 @@
+name: App Store Connect (listing / TestFlight distribution)
+
+# Manual. Lanes live in mobile/fastlane/Fastfile:
+#   metadata  - push the listing text, URLs, categories, review info and privacy details
+#   beta      - distribute the latest processed TestFlight build to an external group
+#               (with What to Test + beta review info); optionally invite one tester
+#   screenshots - upload mobile/fastlane/screenshots/<locale>/*.png
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "What to do"
+        type: choice
+        options: [metadata, beta, screenshots]
+        default: metadata
+      tester_email:
+        description: "beta only: invite this email to the group (optional)"
+        required: false
+        default: ""
+      group:
+        description: "beta only: external TestFlight group name"
+        required: false
+        default: "Friends"
+
+concurrency: appstore-connect
+
+jobs:
+  fastlane:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+      REVIEW_CONTACT_PHONE: ${{ secrets.REVIEW_CONTACT_PHONE }}
+      DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
+      FASTLANE_HIDE_CHANGELOG: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: mobile
+
+      - name: Check secrets
+        run: |
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_P8_BASE64; do
+            [ -n "${!v}" ] || { echo "::error::missing secret $v"; exit 1; }
+          done
+          [ -n "$REVIEW_CONTACT_PHONE" ] || echo "::warning::REVIEW_CONTACT_PHONE not set - App Review contact phone stays empty (required before submission)"
+
+      - name: fastlane ${{ inputs.lane }}
+        run: |
+          case "${{ inputs.lane }}" in
+            beta) bundle exec fastlane ios beta group:"${{ inputs.group }}" tester:"${{ inputs.tester_email }}" ;;
+            *)    bundle exec fastlane ios ${{ inputs.lane }} ;;
+          esac

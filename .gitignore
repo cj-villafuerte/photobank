@@ -8,6 +8,13 @@ web/dist/
 # private checklist
 TODO.md
 
+# fastlane run artifacts (the metadata/ text files ARE tracked)
+mobile/fastlane/report.xml
+mobile/fastlane/Preview.html
+mobile/fastlane/test_output/
+mobile/fastlane/README.md
+mobile/fastlane/screenshots/**/*.html
+
 # Apple certificates / keys / profiles - never in the repo
 *.cer
 *.p8
