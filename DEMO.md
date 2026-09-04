@@ -34,9 +34,15 @@ you showing it off. Same code as every other server, switched into **demo mode**
    | `DEMO_EMAIL` | optional, default `demo@photobank.app` |
    | `DEMO_UPLOAD_TTL_SECONDS` | optional, default `60` - long enough to open what you just uploaded, short enough that nothing accumulates |
 
-4. **Domain**: *Settings → Networking → Generate Domain*. Railway routes to the `PORT` it
-   injects; the image listens on it. The URL is HTTPS out of the box - required, since the
-   iPhone app only allows plain HTTP on the local network.
+4. **Domain**: *Settings → Networking → Generate Domain*. The image listens on whatever `PORT`
+   is; Railway injects one at runtime (8080 on a fresh service). If the domain dialog asks for
+   a target port, either leave it as the injected value or set a `PORT=8000` variable and target
+   8000 - a mismatch shows up as a 502 with a healthy-looking deploy log. The URL is HTTPS out
+   of the box - required, since the iPhone app only allows plain HTTP on the local network.
+
+   CLI equivalent of steps 1-4 (`npm i -g @railway/cli`, `railway login`):
+   `railway init --name photobank-demo` → `railway add --service photobank-demo -v DEMO_MODE=true -v … -v PORT=8000`
+   → `railway volume add --mount-path /data` → `railway up --detach` → `railway domain --port 8000`.
 5. First boot generates the sample library (a few seconds) - `/api/health` answers once it's
    done and shows `"demo": {...}`.
 
