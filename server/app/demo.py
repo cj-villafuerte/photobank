@@ -159,16 +159,62 @@ def _mix(a, b, t: float):
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 
+# Bump when the generated library should be rebuilt on existing deployments.
+SEED_VERSION = "2"
+SEED_VERSION_KEY = "demo_seed_version"
+
+
+def _fetch_stock_photo(seed: str, w: int, h: int):
+    """A real photograph from picsum.photos (Unsplash-licensed, free to use).
+
+    Deterministic per seed. Returns a PIL image, or raises on any network problem.
+    """
+    import io
+    import urllib.request
+
+    from PIL import Image
+
+    req = urllib.request.Request(f"https://picsum.photos/seed/{seed}/{w}/{h}", headers={"User-Agent": "photobank-demo"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        data = r.read()
+    im = Image.open(io.BytesIO(data))
+    im.load()
+    return im.convert("RGB")
+
+
+def _painted_photo(rnd: random.Random, w: int, h: int, top, bottom, caption: str):
+    """Offline fallback: a minimalist landscape poster with a caption."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    img = Image.new("RGB", (w, h))
+    d = ImageDraw.Draw(img)
+    for y in range(h):  # vertical gradient = sky
+        d.line((0, y, w, y), fill=_mix(top, bottom, y / h))
+    horizon = int(h * rnd.uniform(0.55, 0.75))
+    d.rectangle((0, horizon, w, h), fill=_mix(bottom, (20, 24, 28), 0.55))
+    r = int(min(w, h) * rnd.uniform(0.08, 0.16))
+    cx = int(w * rnd.uniform(0.2, 0.8))
+    cy = int(horizon - r * rnd.uniform(0.6, 1.8))
+    d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=_mix(top, (255, 255, 255), 0.5))
+    font = ImageFont.load_default(size=int(min(w, h) * 0.05))
+    d.text((int(w * 0.05), int(h * 0.88)), caption, font=font, fill=(255, 255, 255))
+    return img
+
+
 def generate_sample_photos(work: Path, count: int) -> list[dict]:
     """Writes `count` JPEGs with EXIF dates spread over the last 14 months.
 
-    Runs in a thread. Deterministic (seeded RNG) so every demo deploy looks the same.
+    Real photographs when the network allows (so the demo - and App Store screenshots
+    taken against it - look like a photo library), painted posters otherwise.
+    Runs in a thread. Deterministic (seeded RNG + fixed picsum seeds).
     """
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image
 
     rnd = random.Random(42)
     now = datetime.now(timezone.utc)
     specs: list[dict] = []
+    network_ok = True
+    failures = 0
     for i in range(count):
         scene, album = SCENES[i % len(SCENES)]
         days_back = int(i * (14 * 30) / max(count, 1)) + rnd.randint(0, 6)
@@ -176,20 +222,22 @@ def generate_sample_photos(work: Path, count: int) -> list[dict]:
         portrait = i % 5 == 3
         w, h = (1200, 1600) if portrait else (1600, 1200)
         top, bottom = PALETTES[i % len(PALETTES)]
+        rnd_state = rnd.getstate()  # the painted fallback consumes the RNG; keep dates stable
 
-        img = Image.new("RGB", (w, h))
-        d = ImageDraw.Draw(img)
-        for y in range(h):  # vertical gradient = sky
-            d.line((0, y, w, y), fill=_mix(top, bottom, y / h))
-        horizon = int(h * rnd.uniform(0.55, 0.75))
-        d.rectangle((0, horizon, w, h), fill=_mix(bottom, (20, 24, 28), 0.55))
-        r = int(min(w, h) * rnd.uniform(0.08, 0.16))
-        cx = int(w * rnd.uniform(0.2, 0.8))
-        cy = int(horizon - r * rnd.uniform(0.6, 1.8))
-        d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=_mix(top, (255, 255, 255), 0.5))
-        # caption: readable at thumbnail size, and something for text search to find
-        font = ImageFont.load_default(size=int(min(w, h) * 0.05))
-        d.text((int(w * 0.05), int(h * 0.88)), f"{scene}  -  {when.strftime('%b %Y')}", font=font, fill=(255, 255, 255))
+        img = None
+        if network_ok:
+            try:
+                img = _fetch_stock_photo(f"photobank-{i + 1}", w, h)
+                failures = 0
+            except Exception as e:  # offline, rate-limited, blocked: fall back quietly
+                failures += 1
+                log.warning("demo: stock photo %d unavailable (%s)", i + 1, type(e).__name__)
+                if failures >= 3:
+                    network_ok = False
+                    log.warning("demo: no network for stock photos - painting the rest")
+        if img is None:
+            rnd.setstate(rnd_state)
+            img = _painted_photo(rnd, w, h, top, bottom, f"{scene}  -  {when.strftime('%b %Y')}")
 
         stamp = when.strftime("%Y:%m:%d %H:%M:%S")
         exif = Image.Exif()
@@ -279,8 +327,21 @@ class DemoKeeper:
                 Asset.owner_id == user.id, Asset.taken_at_source == SEED_SOURCE
             )
         )
-        if have:
+        version = await db.get(AppSetting, SEED_VERSION_KEY)
+        if have and version is not None and version.value == SEED_VERSION:
             return
+        if have:
+            # the generator changed: rebuild the sample library from scratch
+            log.info("demo: sample library is v%s, rebuilding as v%s", version.value if version else "?", SEED_VERSION)
+            for asset in (await db.scalars(select(Asset).where(Asset.taken_at_source == SEED_SOURCE))).all():
+                storage.delete_asset_files(asset.owner_id, asset.id, asset.file_path, asset.live_video_path)
+                await db.delete(asset)
+            for album in (await db.scalars(select(Album))).all():
+                await db.delete(album)
+            albums_setting = await db.get(AppSetting, SEED_ALBUMS_KEY)
+            if albums_setting is not None:
+                await db.delete(albums_setting)
+            await db.commit()
         log.info("demo: generating %d sample photos", settings.demo_seed_count)
         work = settings.tmp_dir / "demo-seed"
         work.mkdir(parents=True, exist_ok=True)
@@ -301,6 +362,11 @@ class DemoKeeper:
                 db.add(AlbumAsset(album_id=album.id, asset_id=uuid.UUID(aid)))
             albums_spec[str(album.id)] = {"name": name, "assets": ids}
         db.add(AppSetting(key=SEED_ALBUMS_KEY, value=json.dumps(albums_spec)))
+        version = await db.get(AppSetting, SEED_VERSION_KEY)
+        if version is None:
+            db.add(AppSetting(key=SEED_VERSION_KEY, value=SEED_VERSION))
+        else:
+            version.value = SEED_VERSION
         await db.commit()
 
     async def _ingest(self, db, user: User, spec: dict) -> Asset:

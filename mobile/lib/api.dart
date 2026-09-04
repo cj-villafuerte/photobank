@@ -142,6 +142,10 @@ class ApiException implements Exception {
   String toString() => 'ApiException($status): $message';
 }
 
+/// The public demo server (see DEMO.md): shared account, read-only sample library,
+/// uploads removed after a minute. One tap from the setup screen.
+const demoServerUrl = 'https://photobank-demo-production.up.railway.app';
+
 /// Served by /api/health when the server is the public demo: one shared account,
 /// a read-only sample library, uploads removed after a few seconds.
 class DemoInfo {

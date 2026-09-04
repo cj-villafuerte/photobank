@@ -332,6 +332,17 @@ class _SetupPageState extends State<SetupPage> {
                       onTap: () => _loginTo(s.url, s.name),
                     ),
                   ),
+                const SizedBox(height: 12),
+                // no server yet? the public demo shows what the app does
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.explore_outlined),
+                    title: const Text('Try the demo'),
+                    subtitle: const Text('A public sample library - nothing on this phone is changed'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _loginTo(demoServerUrl, 'the demo server'),
+                  ),
+                ),
                 const SizedBox(height: 20),
                 if (!_manual)
                   TextButton(

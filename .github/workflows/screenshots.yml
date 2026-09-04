@@ -1,0 +1,107 @@
+name: App Store screenshots (iOS simulator)
+
+# Manual. Boots an iPhone 16 Pro Max simulator (1320x2868 = Apple's 6.9" size), drives the
+# real app against the demo server (integration_test/screenshots_test.dart) and saves the
+# captures to mobile/fastlane/screenshots/en-US/. Downloads as an artifact; with
+# upload=true they also go straight to App Store Connect via the fastlane `screenshots` lane.
+on:
+  workflow_dispatch:
+    inputs:
+      server:
+        description: "Photobank server to capture against"
+        required: false
+        default: "https://photobank-demo-production.up.railway.app"
+      upload:
+        description: "Upload to App Store Connect afterwards"
+        type: boolean
+        default: false
+
+concurrency: appstore-screenshots
+
+jobs:
+  capture:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      BUNDLE_ID: com.cjvillafuerte.photobank
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Boot simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devs = [d for devs in json.load(sys.stdin)["devices"].values() for d in devs]
+          want = ["iPhone 16 Pro Max", "iPhone 15 Pro Max", "iPhone 17 Pro Max"]
+          pick = sorted((d for d in devs if d["name"] in want), key=lambda d: want.index(d["name"]))
+          if not pick:
+              sys.exit("no Pro Max simulator available: " + ", ".join(sorted({d["name"] for d in devs})))
+          print(pick[0]["udid"])')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl list devices | grep "$UDID"
+
+      - name: Build the test app for the simulator
+        run: |
+          flutter build ios --simulator --debug \
+            --target integration_test/screenshots_test.dart \
+            --dart-define=PB_SERVER="${{ inputs.server }}"
+
+      - name: Install and pre-grant photo access
+        run: |
+          APP=build/ios/iphonesimulator/Runner.app
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl privacy "$UDID" grant photos "$BUNDLE_ID"
+          xcrun simctl privacy "$UDID" grant photos-add "$BUNDLE_ID" || true
+          # a clean, believable status bar for the captures
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
+
+      - name: Drive the app and capture
+        run: |
+          rm -rf fastlane/screenshots/en-US
+          flutter drive \
+            --driver test_driver/integration_test.dart \
+            --target integration_test/screenshots_test.dart \
+            --use-application-binary build/ios/iphonesimulator/Runner.app \
+            --dart-define=PB_SERVER="${{ inputs.server }}" \
+            -d "$UDID"
+          ls -la fastlane/screenshots/en-US
+          python3 - <<'EOF'
+          import struct, glob
+          for p in sorted(glob.glob("fastlane/screenshots/en-US/*.png")):
+              with open(p, "rb") as f:
+                  f.seek(16); w, h = struct.unpack(">II", f.read(8))
+              print(f"{p}: {w}x{h}")
+          EOF
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: appstore-screenshots
+          path: mobile/fastlane/screenshots/en-US/*.png
+          if-no-files-found: error
+
+      - uses: ruby/setup-ruby@v1
+        if: ${{ inputs.upload }}
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: mobile
+
+      - name: Upload to App Store Connect
+        if: ${{ inputs.upload }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+          FASTLANE_SKIP_UPDATE_CHECK: "1"
+        run: bundle exec fastlane ios screenshots

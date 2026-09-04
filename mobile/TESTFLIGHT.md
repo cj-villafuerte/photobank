@@ -83,7 +83,13 @@ Actions → *App Store Connect (listing / TestFlight distribution)* → Run work
 |---|---|---|
 | `metadata` | Pushes name, subtitle, description, keywords, promo text, release notes, URLs, categories, copyright; App Review contact + demo account + notes; App Privacy = data not collected. Creates the version in App Store Connect if needed. | `fastlane/metadata/**`, `fastlane/review_notes.txt` |
 | `beta` | Distributes the latest processed TestFlight build to an external group (default "Friends") with What to Test + beta review info and submits it for beta review. `tester_email` invites one person (no App Store Connect account needed - just the TestFlight app). | `fastlane/whats_new.txt`, `fastlane/beta_description.txt` |
-| `screenshots` | Uploads `fastlane/screenshots/<locale>/*.png` (6.9"/6.7"/6.5" iPhone sizes, device detected from filename). | drop PNGs in `fastlane/screenshots/en-US/` |
+| `screenshots` | Uploads `fastlane/screenshots/<locale>/*.png` (device detected from the image size). | produced by the *App Store screenshots* workflow below, or drop PNGs in `fastlane/screenshots/en-US/` |
+
+**Screenshots are automated too**: Actions → *App Store screenshots (iOS simulator)* boots an
+iPhone 16 Pro Max simulator, drives the real app against the demo server
+(`integration_test/screenshots_test.dart`: backup, library, photo, albums, stats, settings)
+and saves 1320×2868 captures - Apple's 6.9" size, from which the smaller sizes are derived.
+Download the artifact to check them; run with `upload=true` to push them to App Store Connect.
 
 Extra secrets: `REVIEW_CONTACT_PHONE` (E.164, e.g. `+639171234567`) and `REVIEW_CONTACT_EMAIL` -
 App Review's contact; Apple refuses review details without a valid phone, and `deliver` needs
