@@ -547,10 +547,7 @@ class _HiddenPageState extends State<HiddenPage> {
                                   } else {
                                     Navigator.push(
                                       context,
-                                      MaterialPageRoute(
-                                        builder: (_) => AssetViewer(
-                                            api: widget.api, assets: assets, initialIndex: i),
-                                      ),
+                                      viewerRoute(AssetViewer(api: widget.api, assets: assets, initialIndex: i)),
                                     );
                                   }
                                 },

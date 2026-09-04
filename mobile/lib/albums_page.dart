@@ -216,9 +216,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                               setState(() => isSel ? _selected.remove(a.id) : _selected.add(a.id));
                             } else {
                               Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => AssetViewer(api: widget.api, assets: assets, initialIndex: i)));
+                                  context, viewerRoute(AssetViewer(api: widget.api, assets: assets, initialIndex: i)));
                             }
                           },
                           onLongPress: () => setState(() => isSel ? _selected.remove(a.id) : _selected.add(a.id)),

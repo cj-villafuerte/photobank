@@ -27,11 +27,34 @@ Widget thumbTile(PhotobankApi api, RemoteAsset a) {
     headers: api.authHeaders,
     cacheWidth: 360,
     fit: BoxFit.cover,
+    gaplessPlayback: true,
+    // fade in instead of popping; cached thumbnails render synchronously with no fade
+    frameBuilder: (context, child, frame, wasSync) => wasSync
+        ? child
+        : AnimatedOpacity(
+            opacity: frame == null ? 0 : 1,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            child: child,
+          ),
     errorBuilder: (_, _, _) => Container(
         color: PbColors.surface2,
         child: const Icon(Icons.broken_image_outlined, size: 18, color: PbColors.faint)),
   );
 }
+
+/// Opening a photo: a quick fade reads as "zooming in on what I tapped" far better than
+/// the platform's page slide, and it never competes with the image still loading.
+Route<T> viewerRoute<T>(Widget page) => PageRouteBuilder<T>(
+      opaque: true,
+      transitionDuration: const Duration(milliseconds: 180),
+      reverseTransitionDuration: const Duration(milliseconds: 150),
+      pageBuilder: (_, _, _) => page,
+      transitionsBuilder: (_, animation, _, child) => FadeTransition(
+        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+        child: child,
+      ),
+    );
 
 /// Browse everything stored on the server, month by month, and save
 /// individual photos/videos back to this phone's camera roll.
@@ -254,6 +277,122 @@ class _LibraryPageState extends State<LibraryPage> {
     return assets;
   }
 
+  // Months load on demand as their header scrolls near the viewport (slivers build
+  // lazily), so a 500-photo month costs nothing until you reach it.
+  final Set<String> _loadingMonths = {};
+  final Set<String> _failedMonths = {};
+
+  void _ensureMonth(String bucket) {
+    if (_loaded.containsKey(bucket) || _loadingMonths.contains(bucket) || _failedMonths.contains(bucket)) return;
+    _loadingMonths.add(bucket);
+    () async {
+      try {
+        await _bucketAssets(bucket);
+      } catch (_) {
+        _failedMonths.add(bucket);
+      } finally {
+        _loadingMonths.remove(bucket);
+        if (mounted) setState(() {});
+      }
+    }();
+  }
+
+  Widget _cloudBadge(bool synced) => Positioned(
+        right: 4,
+        bottom: 4,
+        child: Icon(synced ? Icons.cloud_done : Icons.smartphone,
+            size: 15, color: Colors.white, shadows: const [Shadow(blurRadius: 4)]),
+      );
+
+  Widget _tile(BuildContext context, _GridItem item, List<RemoteAsset> remote) {
+    const shadow = [Shadow(blurRadius: 4)];
+    final a = item.remote;
+    if (a != null) {
+      return GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          viewerRoute(AssetViewer(api: widget.api, assets: remote, initialIndex: remote.indexOf(a))),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            thumbTile(widget.api, a),
+            if (a.assetType == 'video')
+              const Positioned(right: 4, top: 4, child: Icon(Icons.play_circle_fill, size: 18, shadows: shadow)),
+            if (a.hasLiveVideo)
+              const Positioned(left: 4, top: 4, child: Icon(Icons.motion_photos_on, size: 16, shadows: shadow)),
+            if (a.isFavorite)
+              const Positioned(left: 4, bottom: 4, child: Icon(Icons.favorite, size: 14, color: PbColors.accent, shadows: shadow)),
+            if (_source != 'server') _cloudBadge(true),
+          ],
+        ),
+      );
+    }
+    final local = item.local!;
+    final synced = _synced.contains(local.id);
+    return GestureDetector(
+      onTap: () => Navigator.push(context, viewerRoute(_LocalPhotoViewer(entity: local, synced: synced))),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          FutureBuilder<Uint8List?>(
+            future: _localThumb(local),
+            builder: (context, s) => s.data == null
+                ? Container(color: PbColors.surface2)
+                : Image.memory(s.data!, fit: BoxFit.cover, gaplessPlayback: true),
+          ),
+          if (local.type == AssetType.video)
+            const Positioned(right: 4, top: 4, child: Icon(Icons.play_circle_fill, size: 18, shadows: shadow)),
+          _cloudBadge(synced),
+        ],
+      ),
+    );
+  }
+
+  /// The month's photos as a lazy sliver grid (or its loading / failed state).
+  Widget _monthSliver(_MonthRow row) {
+    final needsServer = row.serverCount > 0;
+    if (needsServer && !_loaded.containsKey(row.key)) {
+      if (_failedMonths.contains(row.key)) {
+        return SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: Row(
+              children: [
+                const Text('Failed to load this month.'),
+                TextButton(
+                  onPressed: () => setState(() => _failedMonths.remove(row.key)),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+      _ensureMonth(row.key);
+      return const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      );
+    }
+    final remote = needsServer ? _loaded[row.key]! : const <RemoteAsset>[];
+    final items = <_GridItem>[
+      for (final a in remote) _GridItem.remote(a),
+      for (final a in row.phoneItems) _GridItem.local(a),
+    ]..sort((x, y) => y.when.compareTo(x.when));
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      sliver: SliverGrid.builder(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 4, crossAxisSpacing: 2, mainAxisSpacing: 2),
+        itemCount: items.length,
+        itemBuilder: (context, i) => _tile(context, items[i], remote),
+      ),
+    );
+  }
+
   String _monthLabel(String bucket) {
     final parts = bucket.split('-');
     final date = DateTime(int.parse(parts[0]), int.parse(parts[1]));
@@ -338,10 +477,7 @@ class _LibraryPageState extends State<LibraryPage> {
                         return GestureDetector(
                           onTap: () => Navigator.push(
                             context,
-                            MaterialPageRoute(
-                              builder: (_) => AssetViewer(
-                                  api: widget.api, assets: _sizeAssets, initialIndex: i),
-                            ),
+                            viewerRoute(AssetViewer(api: widget.api, assets: _sizeAssets, initialIndex: i)),
                           ),
                           child: Stack(
                             fit: StackFit.expand,
@@ -415,26 +551,49 @@ class _LibraryPageState extends State<LibraryPage> {
     }
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView.builder(
-        itemCount: rows.length + 2,
-        itemBuilder: (context, i) {
-          if (i == 0) return sortBar;
-          if (i == 1) return sourceBar;
-          final row = rows[i - 2];
-          return _BucketSection(
-            api: widget.api,
-            bucketKey: row.key,
-            label: _monthLabel(row.key),
-            serverCount: row.serverCount,
-            phoneItems: row.phoneItems,
-            syncedIds: _synced,
-            showCloudBadge: _source != 'server',
-            loader: row.serverCount > 0 ? _bucketAssets : null,
-            localThumb: _localThumb,
-            collapsed: _collapsed.contains(row.key),
-            onToggle: () => _toggleCollapsed(row.key),
-          );
-        },
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(child: sortBar),
+          SliverToBoxAdapter(child: sourceBar),
+          for (final row in rows) ...[
+            SliverToBoxAdapter(
+              child: _MonthHeader(
+                label: _monthLabel(row.key),
+                count: row.serverCount + row.phoneItems.length,
+                collapsed: _collapsed.contains(row.key),
+                onToggle: () => _toggleCollapsed(row.key),
+              ),
+            ),
+            if (!_collapsed.contains(row.key)) _monthSliver(row),
+          ],
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
+      ),
+    );
+  }
+}
+
+class _MonthHeader extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool collapsed;
+  final VoidCallback onToggle;
+  const _MonthHeader({required this.label, required this.count, required this.collapsed, required this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onToggle,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
+        child: Row(
+          children: [
+            Expanded(child: Text('$label  ·  $count', style: Theme.of(context).textTheme.titleMedium)),
+            Icon(collapsed ? Icons.expand_more : Icons.expand_less,
+                color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ],
+        ),
       ),
     );
   }
@@ -462,161 +621,6 @@ class _GridItem {
         when = a.createDateTime;
 }
 
-class _BucketSection extends StatelessWidget {
-  final PhotobankApi api;
-  final String bucketKey;
-  final String label;
-  final int serverCount;
-  final List<AssetEntity> phoneItems;
-  final Set<String> syncedIds;
-  final bool showCloudBadge; // false in the server-only view (every tile would carry one)
-  final Future<List<RemoteAsset>> Function(String)? loader; // null: nothing from the server
-  final Future<Uint8List?> Function(AssetEntity) localThumb;
-  final bool collapsed;
-  final VoidCallback onToggle;
-  const _BucketSection({
-    required this.api,
-    required this.bucketKey,
-    required this.label,
-    required this.serverCount,
-    required this.phoneItems,
-    required this.syncedIds,
-    required this.showCloudBadge,
-    required this.loader,
-    required this.localThumb,
-    required this.collapsed,
-    required this.onToggle,
-  });
-
-  static const _badgeShadow = [Shadow(blurRadius: 4)];
-
-  Widget _cloud(bool synced) => Positioned(
-        right: 4,
-        bottom: 4,
-        child: Icon(synced ? Icons.cloud_done : Icons.smartphone,
-            size: 15, color: Colors.white, shadows: _badgeShadow),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    final total = serverCount + phoneItems.length;
-    final header = InkWell(
-      onTap: onToggle,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text('$label  ·  $total', style: Theme.of(context).textTheme.titleMedium),
-            ),
-            Icon(collapsed ? Icons.expand_more : Icons.expand_less,
-                color: Theme.of(context).colorScheme.onSurfaceVariant),
-          ],
-        ),
-      ),
-    );
-    if (collapsed) return header; // no fetch, no thumbnails for folded months
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        header,
-        FutureBuilder<List<RemoteAsset>>(
-          future: loader == null ? Future.value(const <RemoteAsset>[]) : loader!(bucketKey),
-          builder: (context, snap) {
-            if (snap.hasError) {
-              return const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('Failed to load this month.'),
-              );
-            }
-            final remote = snap.data;
-            if (remote == null) {
-              return const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              );
-            }
-            // one chronological grid: server copies and phone-only photos together
-            final items = <_GridItem>[
-              for (final a in remote) _GridItem.remote(a),
-              for (final a in phoneItems) _GridItem.local(a),
-            ]..sort((x, y) => y.when.compareTo(x.when));
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4, crossAxisSpacing: 2, mainAxisSpacing: 2),
-              itemCount: items.length,
-              itemBuilder: (context, i) {
-                final item = items[i];
-                final a = item.remote;
-                if (a != null) {
-                  return GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => AssetViewer(api: api, assets: remote, initialIndex: remote.indexOf(a)),
-                      ),
-                    ),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        thumbTile(api, a),
-                        if (a.assetType == 'video')
-                          const Positioned(
-                            right: 4, top: 4,
-                            child: Icon(Icons.play_circle_fill, size: 18, shadows: _badgeShadow),
-                          ),
-                        if (a.hasLiveVideo)
-                          const Positioned(
-                            left: 4, top: 4,
-                            child: Icon(Icons.motion_photos_on, size: 16, shadows: _badgeShadow),
-                          ),
-                        if (a.isFavorite)
-                          const Positioned(
-                            left: 4, bottom: 4,
-                            child: Icon(Icons.favorite, size: 14, color: PbColors.accent, shadows: _badgeShadow),
-                          ),
-                        if (showCloudBadge) _cloud(true),
-                      ],
-                    ),
-                  );
-                }
-                final local = item.local!;
-                final synced = syncedIds.contains(local.id);
-                return GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => _LocalPhotoViewer(entity: local, synced: synced)),
-                  ),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      FutureBuilder<Uint8List?>(
-                        future: localThumb(local),
-                        builder: (context, s) => s.data == null
-                            ? Container(color: PbColors.surface2)
-                            : Image.memory(s.data!, fit: BoxFit.cover, gaplessPlayback: true),
-                      ),
-                      if (local.type == AssetType.video)
-                        const Positioned(
-                          right: 4, top: 4,
-                          child: Icon(Icons.play_circle_fill, size: 18, shadows: _badgeShadow),
-                        ),
-                      _cloud(synced),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
-
 /// A photo that lives only on the phone (or is shown from the phone side): big preview
 /// plus its backup state. Full playback and editing happen on the server copy.
 class _LocalPhotoViewer extends StatelessWidget {
@@ -627,29 +631,13 @@ class _LocalPhotoViewer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        flexibleSpace: const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0x66000000), Color(0x00000000)],
-            ),
-          ),
-        ),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(synced ? Icons.cloud_done : Icons.smartphone, size: 18, color: Colors.white),
+            Icon(synced ? Icons.cloud_done : Icons.smartphone, size: 18),
             const SizedBox(width: 8),
-            Text(synced ? 'Backed up' : 'Only on this phone',
-                style: const TextStyle(color: Colors.white, fontSize: 15)),
+            Text(synced ? 'Backed up' : 'Only on this phone'),
           ],
         ),
       ),
@@ -671,7 +659,7 @@ class _LocalPhotoViewer extends StatelessWidget {
               child: Text(
                 'Not on the server yet. Run a backup from the Backup tab to send it there.',
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
         ],
@@ -692,7 +680,26 @@ class AssetViewer extends StatefulWidget {
 class _AssetViewerState extends State<AssetViewer> {
   late final PageController _controller = PageController(initialPage: widget.initialIndex);
   late int _index = widget.initialIndex;
+  bool _chrome = true; // tap the photo: bars away, black background (tap again to bring them back)
   bool _downloading = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _precacheAround(_index);
+  }
+
+  /// Warm the neighbours' previews so a swipe lands on a ready image.
+  void _precacheAround(int i) {
+    for (final j in [i - 1, i + 1]) {
+      if (j < 0 || j >= widget.assets.length) continue;
+      final a = widget.assets[j];
+      if (a.assetType == 'image') {
+        precacheImage(NetworkImage(widget.api.previewUrl(a.id), headers: widget.api.authHeaders), context)
+            .catchError((_) {});
+      }
+    }
+  }
   double _downloadPct = 0;
   VideoPlayerController? _video;
   bool _videoIsLive = false;
@@ -805,24 +812,14 @@ class _AssetViewerState extends State<AssetViewer> {
   @override
   Widget build(BuildContext context) {
     final asset = widget.assets[_index];
+    // Same chrome as every other screen (paper bar, ink text, hairline). Tapping the
+    // photo hides it and goes black for an immersive look; tapping again restores it.
     return Scaffold(
-      backgroundColor: Colors.black,
-      extendBodyBehindAppBar: true, // the photo runs under the bar; a soft scrim keeps icons legible
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        flexibleSpace: const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0x66000000), Color(0x00000000)],
-            ),
-          ),
-        ),
-        title: Text('${_index + 1} / ${widget.assets.length}', style: const TextStyle(color: Colors.white)),
+      backgroundColor: _chrome ? Theme.of(context).scaffoldBackgroundColor : Colors.black,
+      appBar: !_chrome
+          ? null
+          : AppBar(
+        title: Text('${_index + 1} / ${widget.assets.length}'),
         actions: [
           IconButton(
             icon: Icon(_isFav(asset) ? Icons.favorite : Icons.favorite_border,
@@ -886,11 +883,15 @@ class _AssetViewerState extends State<AssetViewer> {
       ),
       body: PageView.builder(
         controller: _controller,
+        allowImplicitScrolling: true, // neighbours are built (and start loading) early
         itemCount: widget.assets.length,
-        onPageChanged: (i) => setState(() {
-          _index = i;
-          _stopVideo();
-        }),
+        onPageChanged: (i) {
+          setState(() {
+            _index = i;
+            _stopVideo();
+          });
+          _precacheAround(i);
+        },
         itemBuilder: (context, i) {
           final a = widget.assets[i];
           final video = _video;
@@ -908,15 +909,46 @@ class _AssetViewerState extends State<AssetViewer> {
                 : Stack(
                     alignment: Alignment.center,
                     children: [
-                      InteractiveViewer(
-                        maxScale: 5,
-                        child: Image.network(
-                          widget.api.previewUrl(a.id),
-                          headers: widget.api.authHeaders,
-                          fit: BoxFit.contain,
-                          loadingBuilder: (_, child, progress) =>
-                              progress == null ? child : const CircularProgressIndicator(),
-                          errorBuilder: (_, _, _) => const Icon(Icons.broken_image, size: 48),
+                      GestureDetector(
+                        onTap: () => setState(() => _chrome = !_chrome),
+                        child: InteractiveViewer(
+                          maxScale: 5,
+                          // the grid's thumbnail is already in memory: show it at once under
+                          // the preview, which fades in over it when it arrives (no spinner,
+                          // no pop)
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (a.thumbStatus == 'done')
+                                Positioned.fill(
+                                  child: Image.network(
+                                    widget.api.thumbUrl(a.id),
+                                    headers: widget.api.authHeaders,
+                                    cacheWidth: 360,
+                                    fit: BoxFit.contain,
+                                    filterQuality: FilterQuality.low,
+                                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                                  ),
+                                ),
+                              Positioned.fill(
+                                child: Image.network(
+                                  widget.api.previewUrl(a.id),
+                                  headers: widget.api.authHeaders,
+                                  fit: BoxFit.contain,
+                                  gaplessPlayback: true,
+                                  frameBuilder: (context, child, frame, wasSync) => wasSync
+                                      ? child
+                                      : AnimatedOpacity(
+                                          opacity: frame == null ? 0 : 1,
+                                          duration: const Duration(milliseconds: 220),
+                                          curve: Curves.easeOut,
+                                          child: child,
+                                        ),
+                                  errorBuilder: (_, _, _) => const Center(child: Icon(Icons.broken_image, size: 48)),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       if (a.assetType == 'video')
