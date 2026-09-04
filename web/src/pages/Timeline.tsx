@@ -49,6 +49,8 @@ function MonthSection({
     queryKey: ["bucket", bucket, favorites],
     queryFn: () => api.bucket(bucket, favorites),
     enabled: visible,
+    // thumbnails are generated in the background: keep asking until this month has them all
+    refetchInterval: (q) => (q.state.data?.some((a) => a.thumb_status !== "done") ? 5_000 : false),
   });
 
   return (
@@ -93,10 +95,22 @@ export default function Timeline({ favorites }: { favorites: boolean }) {
   });
   const sizeAssets = sizeQuery.data?.pages.flat() ?? [];
 
+  // Phones upload while this page sits open (the desktop window especially): poll the
+  // cheap month summary, and when it changes, refetch the months that are on screen.
   const { data: buckets, isLoading } = useQuery({
     queryKey: ["buckets", favorites],
     queryFn: () => api.buckets(favorites),
+    refetchInterval: 15_000,
   });
+  const bucketSignature = buckets?.map((b) => `${b.bucket}:${b.count}`).join(",") ?? "";
+  const lastSignature = useRef(bucketSignature);
+  useEffect(() => {
+    if (bucketSignature && lastSignature.current && bucketSignature !== lastSignature.current) {
+      qc.invalidateQueries({ queryKey: ["bucket"] });
+      qc.invalidateQueries({ queryKey: ["sizelist"] });
+    }
+    lastSignature.current = bucketSignature;
+  }, [bucketSignature, qc]);
   const { data: albums } = useQuery({ queryKey: ["albums"], queryFn: api.albums });
 
   // reset selection when switching between timeline and favorites

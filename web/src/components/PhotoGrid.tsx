@@ -42,7 +42,14 @@ export default function PhotoGrid({ assets, selected, onOpen, onToggleSelect, sh
             }}
             title={new Date(a.taken_at).toLocaleString()}
           >
-            <img src={thumbUrl(a.id)} loading="lazy" alt="" draggable={false} />
+            {/* while the thumbnail is still being made the server sends a no-store placeholder;
+                a different URL once it's done makes the browser fetch the real image */}
+            <img
+              src={a.thumb_status === "done" ? thumbUrl(a.id) : `${thumbUrl(a.id)}?pending=${a.thumb_status}`}
+              loading="lazy"
+              alt=""
+              draggable={false}
+            />
             {a.asset_type === "video" && <span className="badge">{fmtDuration(a.duration_sec)}</span>}
             {a.has_live_video && <span className="badge live">◉ LIVE</span>}
             {showSize && <span className="badge size">{fmtBytes(a.file_size)}</span>}
