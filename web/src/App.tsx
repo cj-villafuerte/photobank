@@ -14,8 +14,31 @@ import Stats from "./pages/Stats";
 import Duplicates from "./pages/Duplicates";
 import Console from "./pages/Console";
 
-/** Running inside the desktop app's window (pywebview injects this). */
-export const isDesktop = () => typeof window !== "undefined" && !!window.pywebview;
+/** sessionStorage flag: this window is the desktop app's. The desktop opens the page as
+ *  `/?desktop=1`; the flag is set from that on the first script and outlives the query
+ *  string (client routing drops it). pywebview's `window.pywebview` bridge arrives only
+ *  after page load, too late to decide the first render by. */
+const DESKTOP_WINDOW = "pb_desktop_window";
+if (typeof window !== "undefined") {
+  try {
+    if (new URLSearchParams(window.location.search).get("desktop") === "1") {
+      sessionStorage.setItem(DESKTOP_WINDOW, "1");
+    }
+  } catch {
+    /* no sessionStorage: the bridge check below still applies */
+  }
+}
+
+/** Running inside the desktop app's window. */
+export const isDesktop = () => {
+  if (typeof window === "undefined") return false;
+  if (window.pywebview) return true;
+  try {
+    return sessionStorage.getItem(DESKTOP_WINDOW) === "1";
+  } catch {
+    return false;
+  }
+};
 
 /** sessionStorage flag: the desktop administrator chose "View as member…", so the
  *  next login screen is a member sign-in (kept out of the URL - redirects would drop it). */
@@ -59,8 +82,8 @@ export async function refreshSession(qc: QueryClient) {
 /** Desktop window: become the passwordless local administrator (loopback + secret). */
 export async function localAdminLogin(): Promise<boolean> {
   try {
-    // pywebview injects its bridge shortly after load; wait briefly for it
-    for (let i = 0; i < 20 && !window.pywebview?.api?.local_token; i++) {
+    // pywebview injects its bridge after page load; give it up to ten seconds
+    for (let i = 0; i < 100 && !window.pywebview?.api?.local_token; i++) {
       await new Promise((r) => setTimeout(r, 100));
     }
     const token = await window.pywebview?.api?.local_token?.();
@@ -214,8 +237,19 @@ export default function App() {
       setBooted(true);
       return;
     }
-    localAdminLogin().finally(() => setBooted(true));
-  }, [booted]);
+    localAdminLogin().finally(() => {
+      qcBoot.invalidateQueries({ queryKey: ["me"] });
+      setBooted(true);
+    });
+  }, [booted, qcBoot]);
+  // the bridge arriving late (or a window opened without ?desktop=1): boot again as desktop
+  useEffect(() => {
+    const onBridge = () => {
+      if (!isMemberView() && !memberSignInRequested()) setBooted(false);
+    };
+    window.addEventListener("pywebviewready", onBridge);
+    return () => window.removeEventListener("pywebviewready", onBridge);
+  }, []);
 
   const { data: user, isLoading, error } = useQuery({
     queryKey: ["me"],

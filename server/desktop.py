@@ -222,8 +222,10 @@ def main() -> None:
                 CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
                 return str(p)
 
+        # ?desktop=1 tells the web app it is inside this window from the very first
+        # script, before pywebview injects its bridge (that happens after page load)
         window = webview.create_window(
-            "Photobank", url, width=1280, height=850, min_size=(700, 500),
+            "Photobank", f"{url}/?desktop=1", width=1280, height=850, min_size=(700, 500),
             js_api=DesktopApi(),
         )
         ui["window"] = window
