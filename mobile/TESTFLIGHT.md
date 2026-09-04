@@ -48,6 +48,29 @@ On Windows use `--body` instead of piping: PowerShell appends a CRLF to piped te
 gh secret set ASC_API_KEY_P8_BASE64 --body ([Convert]::ToBase64String([IO.File]::ReadAllBytes("AuthKey_XXXXXXXXXX.p8")))
 ```
 
+**Development certificate for the archive step** - `IOS_DEV_CERT_P12_BASE64` and
+`IOS_DEV_CERT_PASSWORD`. `xcodebuild archive` under automatic signing signs with an
+"Apple Development" identity; on a fresh runner Xcode otherwise mints a *new* development
+certificate every run through the API key, and Apple's per-account limit is hit after about
+a dozen builds ("Choose a certificate to revoke", then "No profiles for … were found").
+Make one certificate whose key you keep, and the runner imports it into a throwaway keychain:
+
+```powershell
+$o = "C:\Program Files\Git\usr\bin\openssl.exe"
+& $o genrsa -out ci_dev.key 2048
+& $o req -new -key ci_dev.key -subj "/CN=Photobank CI/O=<your name>/C=US" -out ci_dev.csr
+# POST /v1/certificates {certificateType: DEVELOPMENT, csrContent} with the API key -> ci_dev.cer (DER)
+& $o x509 -in ci_dev.cer -inform der -out ci_dev.pem
+& $o pkcs12 -export -inkey ci_dev.key -in ci_dev.pem -out ci_dev.p12 -passout pass:<pw> `
+    -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1     # macOS `security import` needs these
+gh secret set IOS_DEV_CERT_P12_BASE64 --body ([Convert]::ToBase64String([IO.File]::ReadAllBytes("ci_dev.p12")))
+gh secret set IOS_DEV_CERT_PASSWORD --body "<pw>"
+```
+
+Keep `ci_dev.key` / `ci_dev.p12` outside the repo (here: `%USERPROFILE%\.appstoreconnect\ci-dev-cert`).
+Stale "Created via API" development certificates can be revoked at developer.apple.com >
+Certificates, or with `DELETE /v1/certificates/{id}`; they only ever existed on dead runners.
+
 Optional - only if cloud signing is refused (e.g. the team already has 3 distribution
 certificates): export your Apple Distribution certificate from Xcode > Settings > Accounts >
 Manage Certificates (right-click > Export) as a `.p12` and add

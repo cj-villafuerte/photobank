@@ -21,8 +21,14 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-      # optional; the `secrets` context can't be used in a step `if`, so it's mirrored here
+      # optional; the `secrets` context can't be used in a step `if`, so they're mirrored here
       IOS_DIST_CERT_P12_BASE64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+      # a persistent "Apple Development" certificate for the archive step. Without one,
+      # every run on a fresh runner makes Xcode mint a new development certificate via
+      # the API key, and Apple's per-account limit is reached within a dozen builds
+      # ("Choose a certificate to revoke"). Made once with an openssl CSR + the
+      # App Store Connect API; the private key never touches the runner otherwise.
+      IOS_DEV_CERT_P12_BASE64: ${{ secrets.IOS_DEV_CERT_P12_BASE64 }}
     steps:
       - uses: actions/checkout@v5
 
@@ -51,24 +57,35 @@ jobs:
           echo -n "$ASC_API_KEY_P8_BASE64" | base64 --decode > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
           echo "ASC_KEY_PATH=$HOME/private_keys/AuthKey_$ASC_KEY_ID.p8" >> "$GITHUB_ENV"
 
-      # Optional. Without it Xcode uses a cloud-managed "Apple Distribution" certificate
-      # (the API key needs the App Manager or Admin role for that). With it, the exported
-      # .p12 is imported into a throwaway keychain and Xcode signs with that instead.
-      - name: Install distribution certificate (optional)
-        if: env.IOS_DIST_CERT_P12_BASE64 != ''
+      # Signing identities for the runner's throwaway keychain.
+      #  - development (IOS_DEV_CERT_P12_BASE64): what `xcodebuild archive` signs with under
+      #    automatic signing; the provisioning profile is created/refreshed via the API key.
+      #  - distribution (IOS_DIST_CERT_P12_BASE64, optional): without it the export uses the
+      #    cloud-managed "Apple Distribution" certificate (API key: App Manager or Admin).
+      - name: Install signing certificates
+        if: env.IOS_DEV_CERT_P12_BASE64 != '' || env.IOS_DIST_CERT_P12_BASE64 != ''
         env:
-          P12_BASE64: ${{ env.IOS_DIST_CERT_P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          DEV_P12_BASE64: ${{ env.IOS_DEV_CERT_P12_BASE64 }}
+          DEV_P12_PASSWORD: ${{ secrets.IOS_DEV_CERT_PASSWORD }}
+          DIST_P12_BASE64: ${{ env.IOS_DIST_CERT_P12_BASE64 }}
+          DIST_P12_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ github.run_id }}
         run: |
           set -euo pipefail
-          CERT="$RUNNER_TEMP/dist.p12"
           KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
-          echo -n "$P12_BASE64" | base64 --decode > "$CERT"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "$CERT" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          import_p12() {  # $1 = base64, $2 = password, $3 = label
+            [ -n "$1" ] || return 0
+            local f="$RUNNER_TEMP/$3.p12"
+            echo -n "$1" | base64 --decode > "$f"
+            security import "$f" -P "$2" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+            rm -f "$f"
+            echo "imported $3 certificate"
+          }
+          import_p12 "$DEV_P12_BASE64" "$DEV_P12_PASSWORD" development
+          import_p12 "$DIST_P12_BASE64" "$DIST_P12_PASSWORD" distribution
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
           security find-identity -v -p codesigning "$KEYCHAIN"
