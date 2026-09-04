@@ -27,17 +27,22 @@ def review_notes
       .gsub("{DEMO_URL}", DEMO_URL).gsub("{DEMO_USER}", DEMO_USER).gsub("{DEMO_PASSWORD}", DEMO_PASSWORD)
 end
 
+def contact_phone
+  ENV["REVIEW_CONTACT_PHONE"].to_s.strip
+end
+
+# Apple rejects App Review details without a valid contact phone, so this is all-or-nothing.
 def review_info
-  info = {
+  return nil if contact_phone.empty?
+  {
     first_name: CONTACT_FIRST,
     last_name: CONTACT_LAST,
+    phone_number: contact_phone,
     email_address: CONTACT_EMAIL,
     demo_user: DEMO_USER,
     demo_password: DEMO_PASSWORD,
     notes: review_notes,
   }
-  info[:phone_number] = ENV["REVIEW_CONTACT_PHONE"] if ENV["REVIEW_CONTACT_PHONE"].to_s != ""
-  info
 end
 
 platform :ios do
@@ -46,11 +51,15 @@ platform :ios do
     key = asc_key
     version = ENV["APP_VERSION"] || File.read("../pubspec.yaml")[/^version:\s*([\d.]+)/, 1]
     UI.message("Listing for version #{version}")
+    info = review_info
+    if info.nil?
+      UI.important("REVIEW_CONTACT_PHONE is not set: uploading the listing without App Review contact/demo details (re-run once it is)")
+    end
     deliver(
       api_key: key,
       app_version: version,            # creates the version in App Store Connect if it doesn't exist
       metadata_path: "fastlane/metadata",
-      app_review_information: review_info,
+      app_review_information: info,
       skip_binary_upload: true,
       skip_screenshots: true,
       run_precheck_before_submit: false,
@@ -79,6 +88,7 @@ platform :ios do
 
   desc "Distribute the latest processed TestFlight build to an external group with test info; optionally invite a tester."
   lane :beta do |options|
+    UI.user_error!("REVIEW_CONTACT_PHONE secret is required: external TestFlight review needs a contact phone (E.164, e.g. +639171234567)") if contact_phone.empty?
     key = asc_key
     group = options[:group] || "Friends"
     if options[:tester].to_s != ""
@@ -94,11 +104,11 @@ platform :ios do
       contact_email: CONTACT_EMAIL,
       contact_first_name: CONTACT_FIRST,
       contact_last_name: CONTACT_LAST,
+      contact_phone: contact_phone,
       demo_account_name: DEMO_USER,
       demo_account_password: DEMO_PASSWORD,
       notes: review_notes,
     }
-    review[:contact_phone] = ENV["REVIEW_CONTACT_PHONE"] if ENV["REVIEW_CONTACT_PHONE"].to_s != ""
     upload_to_testflight(
       api_key: key,
       distribute_only: true,           # latest build already uploaded by the TestFlight workflow
