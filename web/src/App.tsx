@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import { QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, User } from "./api";
@@ -198,31 +198,56 @@ function NavBar({ user }: { user: User }) {
   );
 }
 
+/** A member sign-in was asked for ("View as member…"): the one time the desktop
+ *  window shows a login screen instead of signing the administrator in. */
+const memberSignInRequested = () => sessionStorage.getItem(LOGIN_AS_MEMBER) === "1";
+
 export default function App() {
+  const qcBoot = useQueryClient();
+  // Desktop window: the administrator is signed in before anything renders - whatever
+  // cookie is lying around from an earlier member view. Only a window that is still in
+  // its member view (a reload) or was just asked for a member sign-in skips this.
+  const [booted, setBooted] = useState(!isDesktop());
+  useEffect(() => {
+    if (booted) return;
+    if (isMemberView() || memberSignInRequested()) {
+      setBooted(true);
+      return;
+    }
+    localAdminLogin().finally(() => setBooted(true));
+  }, [booted]);
+
   const { data: user, isLoading, error } = useQuery({
     queryKey: ["me"],
     queryFn: api.me,
+    enabled: booted,
     retry: (count, err) => !(err instanceof ApiError && err.status === 401) && count < 2,
   });
 
-  // desktop window with no session: sign in as the local administrator automatically
-  const qcBoot = useQueryClient();
-  const [autoTried, setAutoTried] = useState(false);
-  // once anyone has been signed in, an empty session is a deliberate sign-out
-  // ("View as member…", "Log out") - never auto-restore the administrator over it
+  // Desktop, nobody signed in, no member sign-in requested: the administrator, every
+  // time (a member view whose cookie expired, a cleared session). A few failures in a
+  // row mean the local token is unavailable - then the login screen shows, with its
+  // "Open the administrator console" button to try again.
+  const restoring = useRef(false);
+  const attempts = useRef(0);
+  const [adminUnavailable, setAdminUnavailable] = useState(false);
+  const wantsAdmin = booted && !isLoading && !user && isDesktop() && !memberSignInRequested() && !adminUnavailable;
   useEffect(() => {
-    if (user) setAutoTried(true);
+    if (!wantsAdmin || restoring.current) return;
+    restoring.current = true;
+    sessionStorage.removeItem(MEMBER_VIEW);
+    localAdminLogin().then((ok) => {
+      restoring.current = false;
+      attempts.current += 1;
+      if (ok && attempts.current <= 3) qcBoot.invalidateQueries({ queryKey: ["me"] });
+      else setAdminUnavailable(true);
+    });
+  }, [wantsAdmin, qcBoot]);
+  useEffect(() => {
+    if (user) attempts.current = 0;
   }, [user]);
-  useEffect(() => {
-    if (!isLoading && !user && isDesktop() && !autoTried) {
-      setAutoTried(true);
-      localAdminLogin().then((ok) => {
-        if (ok) qcBoot.invalidateQueries({ queryKey: ["me"] });
-      });
-    }
-  }, [isLoading, user, autoTried, qcBoot]);
 
-  if (isLoading || (!user && isDesktop() && !autoTried)) {
+  if (!booted || isLoading || wantsAdmin) {
     return <div className="auth-wrap muted">Loading…</div>;
   }
 
