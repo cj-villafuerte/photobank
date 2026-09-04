@@ -52,12 +52,17 @@ void main() {
     app.main();
     // stat cards = photo library scanned; on the CI simulator the permission dialog is
     // tapped away by a helper in the meantime, so allow it a while
-    await waitFor(tester, find.text('Backed up'), seconds: 60);
+    final statCards = find.textContaining(RegExp(r'^backed up$', caseSensitive: false));
+    if (!await waitFor(tester, statCards, seconds: 90)) {
+      // without photo access the screen is a spinner - never worth uploading
+      fail('backup screen never showed its stat cards (photo permission not granted?)');
+    }
     await settle(tester, seconds: 2);
     await binding.takeScreenshot('01-backup');
 
     await tester.tap(find.text('Library'));
-    await waitFor(tester, find.byType(GridView));
+    // server tiles carry the cloud badge; the month grids are slivers, not a GridView
+    await waitFor(tester, find.byIcon(Icons.cloud_done));
     await settle(tester, seconds: 8); // let the thumbnails in view finish loading
     await binding.takeScreenshot('02-library');
 

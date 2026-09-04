@@ -144,8 +144,10 @@ jobs:
             --vm-service-port=54321 --observatory-port=54321
           # detached from this step's shell: it must still be polling minutes from now,
           # during the drive step (one run lost the tapper right after this step ended)
-          PATH="$HOME/.local/bin:$PATH" nohup setsid python3 diag/tap_allow.py > diag/tapper.log 2>&1 < /dev/null &
+          # (macOS has no setsid: nohup + disown is what detaches here)
+          PATH="$HOME/.local/bin:$PATH" nohup python3 diag/tap_allow.py > diag/tapper.log 2>&1 < /dev/null &
           echo "TAPPID=$!" >> "$GITHUB_ENV"
+          disown
           for i in $(seq 1 60); do
             curl -sf "http://127.0.0.1:54321/" >/dev/null 2>&1 && { echo "VM service up after ${i}s"; break; }
             sleep 1

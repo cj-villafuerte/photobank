@@ -462,9 +462,10 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
                     showSelectedIcon: false,
                     style: const ButtonStyle(visualDensity: VisualDensity.compact),
                     segments: const [
+                      // text only: with icons "Phone only" wraps onto two lines on a 6.7" phone
                       ButtonSegment(value: 'all', label: Text('All')),
-                      ButtonSegment(value: 'server', icon: Icon(Icons.cloud_done_outlined, size: 16), label: Text('Server')),
-                      ButtonSegment(value: 'phone', icon: Icon(Icons.smartphone, size: 16), label: Text('Phone only')),
+                      ButtonSegment(value: 'server', label: Text('Server')),
+                      ButtonSegment(value: 'phone', label: Text('Phone only')),
                     ],
                     selected: {_source},
                     onSelectionChanged: (sel) => _setSource(sel.first),
