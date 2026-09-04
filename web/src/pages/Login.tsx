@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
-import { LOGIN_AS_MEMBER, isDesktop, localAdminLogin, refreshSession } from "../App";
+import { LOGIN_AS_MEMBER, MEMBER_VIEW, isDesktop, localAdminLogin, refreshSession } from "../App";
 import { useDemo } from "../demo";
 
 export default function Login() {
@@ -20,6 +20,7 @@ export default function Login() {
 
   const openConsole = async () => {
     sessionStorage.removeItem(LOGIN_AS_MEMBER);
+    sessionStorage.removeItem(MEMBER_VIEW);
     if (await localAdminLogin()) {
       await refreshSession(qc);
       navigate("/console");
@@ -43,6 +44,9 @@ export default function Login() {
       if (mode === "login") await api.login(email, password);
       else await api.register(email, password, displayName);
       sessionStorage.removeItem(LOGIN_AS_MEMBER);
+      // a password sign-in inside the desktop window is always a member's view; the
+      // administrator of this computer never types a password
+      if (isDesktop()) sessionStorage.setItem(MEMBER_VIEW, "1");
       // no navigate(): once `me` is refreshed the signed-in routes take over and
       // their catch-all sends us home (library, or the Console for a desktop admin)
       await refreshSession(qc);

@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, User } from "../api";
-import { useUser } from "../App";
+import { isAdminHere, useUser } from "../App";
 import { fmtBytes } from "../components/PhotoGrid";
 import { useToast } from "../components/Toast";
 import { useDemo } from "../demo";
@@ -343,7 +343,7 @@ export default function Settings() {
         </button>
       </form>
 
-      {user.is_admin && <RedundancyBackup />}
+      {isAdminHere(user) && <RedundancyBackup />}
 
       <h2 className="settings-heading">Storage</h2>
       <Link to="/duplicates">

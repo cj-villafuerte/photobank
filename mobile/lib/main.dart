@@ -1055,9 +1055,9 @@ class _SyncPageState extends State<SyncPage> {
                             child: Padding(
                               padding: const EdgeInsets.all(14),
                               child: Text(
-                                'Demo server: uploads are removed after '
-                                '${widget.api.demo!.uploadTtlSeconds} seconds and the sample library is '
-                                'read-only. Free up space is off - nothing is deleted from this phone.',
+                                'Demo server: each backup sends the newest 25 photos and the server '
+                                'removes them again after ${widget.api.demo!.uploadTtlSeconds} seconds. '
+                                'The sample library is read-only, and nothing is ever deleted from this phone.',
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
                             ),
@@ -1101,15 +1101,14 @@ class _SyncPageState extends State<SyncPage> {
                           child: Padding(padding: const EdgeInsets.all(14), child: Text(_lastResult!)),
                         ),
                       ],
-                      const SizedBox(height: 20),
-                      Text(
-                        widget.api.demo != null
-                            ? 'Demo server: each backup sends the newest 25 photos; the server '
-                              'removes them again shortly after. Nothing is removed from this phone.'
-                            : 'Backups only run while this app is open. Photos are verified '
-                              'on the server before anything is removed from the phone.',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
+                      if (widget.api.demo == null) ...[
+                        const SizedBox(height: 20),
+                        Text(
+                          'Backups only run while this app is open. Photos are verified '
+                          'on the server before anything is removed from the phone.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
                     ],
                   ),
                 ),

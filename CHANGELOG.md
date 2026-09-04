@@ -21,8 +21,10 @@
 - Hidden photos: the Settings entry appears only after pulling past the end of the page
   (web and iPhone); hide toasts no longer say where to look.
 - Desktop: "View as member…" shows a member sign-in and that member's library inside the
-  window; "Administrator console" returns. Session switches now refetch instead of clearing
-  the query cache (which never re-rendered).
+  window, exactly as they see it - no Console link, no `/console`, no administrator
+  controls in Settings, even when the account has the admin role (the first account
+  registered always does). "Sign out" returns straight to the administrator's Console.
+  Session switches now refetch instead of clearing the query cache (which never re-rendered).
 - iOS: `NSAllowsArbitraryLoads` removed (LAN HTTP only), `CFBundleName` = Photobank,
   export-compliance flag set; bundle ids are `com.cjvillafuerte.photobank`.
 - Branding: made by CJ Villafuerte.

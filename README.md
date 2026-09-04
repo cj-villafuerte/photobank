@@ -126,7 +126,8 @@ workflow plus fastlane lanes for the listing, review info, privacy details and t
 `Photobank.exe` / `Photobank.app` runs the server (SQLite) with a native window and a
 tray / menu-bar icon; closing the window keeps the server running for phone syncs. The
 computer's user is the administrator (no password); members sign in with theirs, and
-"View as member…" shows a member's library inside the same window.
+"View as member…" shows a member's library inside the same window, exactly as that member
+sees it (no administrator controls) - "Sign out" brings the administrator straight back.
 
 - **Windows:** `.\scripts\build-desktop.ps1` → `server\dist\Photobank\Photobank.exe`
 - **macOS:** built by GitHub Actions (`Build macOS desktop app` workflow) → download

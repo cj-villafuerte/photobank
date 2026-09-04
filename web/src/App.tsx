@@ -21,6 +21,15 @@ export const isDesktop = () => typeof window !== "undefined" && !!window.pywebvi
  *  next login screen is a member sign-in (kept out of the URL - redirects would drop it). */
 export const LOGIN_AS_MEMBER = "pb_login_as_member";
 
+/** sessionStorage flag: a member signed in with a password inside the desktop window.
+ *  While set, the app shows exactly what that member sees in a browser - no Console,
+ *  no administrator controls - even when the account itself has the admin role
+ *  (the first account registered on a server always does). */
+export const MEMBER_VIEW = "pb_member_view";
+export const isMemberView = () => isDesktop() && sessionStorage.getItem(MEMBER_VIEW) === "1";
+/** The administrator's controls belong to an admin account outside the member view. */
+export const isAdminHere = (user: User) => user.is_admin && !isMemberView();
+
 declare global {
   interface Window {
     pywebview?: {
@@ -100,6 +109,7 @@ function ApiErrorToaster() {
 function NavBar({ user }: { user: User }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const admin = isAdminHere(user);
   // No navigate() here: `me` updates on a later tick than the awaited refresh, and
   // the router's catch-all redirects against whoever it currently thinks we are.
   // Once `me` is 401 the logged-out routes take over and land on /login themselves.
@@ -118,10 +128,21 @@ function NavBar({ user }: { user: User }) {
       navigate("/console"); // either order ends on the Console for a desktop admin
     }
   };
+  // member view over: the administrator comes straight back, no login screen in between
+  const signOutToAdmin = async () => {
+    await api.logout();
+    sessionStorage.removeItem(MEMBER_VIEW);
+    if (await localAdminLogin()) {
+      await refreshSession(qc);
+      navigate("/console");
+    } else {
+      await refreshSession(qc);
+    }
+  };
   return (
     <nav className="nav">
       <span className="brand">Photobank<small>by CJ Villafuerte</small></span>
-      {user.is_admin && (
+      {admin && (
         <NavLink to="/console" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
           Console
         </NavLink>
@@ -151,7 +172,9 @@ function NavBar({ user }: { user: User }) {
       <NavLink to="/settings" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
         {user.display_name}
       </NavLink>
-      {isDesktop() && user.is_admin ? (
+      {isMemberView() ? (
+        <button onClick={signOutToAdmin}>Sign out</button>
+      ) : isDesktop() && user.is_admin ? (
         <button onClick={viewAsMember}>View as member…</button>
       ) : isDesktop() ? (
         <button onClick={openConsole}>Administrator console</button>
@@ -201,6 +224,7 @@ export default function App() {
     );
   }
 
+  const admin = isAdminHere(user);
   return (
     <UserContext.Provider value={user}>
       <ToastProvider>
@@ -211,10 +235,10 @@ export default function App() {
           {/* admins on the desktop app land on the Console; everyone else on the library */}
           <Route
             path="/"
-            element={user.is_admin && isDesktop() ? <Navigate to="/console" replace /> : <Timeline favorites={false} />}
+            element={admin && isDesktop() ? <Navigate to="/console" replace /> : <Timeline favorites={false} />}
           />
           <Route path="/library" element={<Timeline favorites={false} />} />
-          {user.is_admin && <Route path="/console" element={<Console />} />}
+          {admin && <Route path="/console" element={<Console />} />}
           <Route path="/favorites" element={<Timeline favorites={true} />} />
           <Route path="/albums" element={<Albums />} />
           <Route path="/albums/:id" element={<AlbumDetail />} />
@@ -224,7 +248,7 @@ export default function App() {
           <Route path="/duplicates" element={<Duplicates />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/settings/hidden" element={<Hidden />} />
-          {user.is_admin && <Route path="/admin" element={<Navigate to="/console" replace />} />}
+          {admin && <Route path="/admin" element={<Navigate to="/console" replace />} />}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </ToastProvider>
