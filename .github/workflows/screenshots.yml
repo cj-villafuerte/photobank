@@ -64,8 +64,10 @@ jobs:
         run: |
           APP=build/ios/iphonesimulator/Runner.app
           xcrun simctl install "$UDID" "$APP"
+          # full photo-library access; granting `photos-add` afterwards downgrades it to
+          # add-only and the app's read request prompts again ("Keep Add Only" dialog)
+          xcrun simctl privacy "$UDID" grant all "$BUNDLE_ID" || true
           xcrun simctl privacy "$UDID" grant photos "$BUNDLE_ID"
-          xcrun simctl privacy "$UDID" grant photos-add "$BUNDLE_ID" || true
           # a clean, believable status bar for the captures
           xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
           mkdir -p diag
