@@ -65,6 +65,22 @@ the App Store listing should show a new version; TestFlight only needs the build
   goes through beta review (usually < 1 day); later builds of the same version are instant.
   Put the demo-server details below in the "Test information" so the reviewer can log in.
 
+## Automated listing, review info and distribution (`fastlane/`)
+
+Actions → *App Store Connect (listing / TestFlight distribution)* → Run workflow:
+
+| Lane | What it does | Edit these files first |
+|---|---|---|
+| `metadata` | Pushes name, subtitle, description, keywords, promo text, release notes, URLs, categories, copyright; App Review contact + demo account + notes; App Privacy = data not collected. Creates the version in App Store Connect if needed. | `fastlane/metadata/**`, `fastlane/review_notes.txt` |
+| `beta` | Distributes the latest processed TestFlight build to an external group (default "Friends") with What to Test + beta review info and submits it for beta review. `tester_email` invites one person (no App Store Connect account needed - just the TestFlight app). | `fastlane/whats_new.txt`, `fastlane/beta_description.txt` |
+| `screenshots` | Uploads `fastlane/screenshots/<locale>/*.png` (6.9"/6.7"/6.5" iPhone sizes, device detected from filename). | drop PNGs in `fastlane/screenshots/en-US/` |
+
+Extra secrets: `REVIEW_CONTACT_PHONE` (E.164, e.g. `+639171234567` - App Review's contact
+phone, required before submission) and `DEMO_PASSWORD` (the demo server's).
+
+Still manual (UI only): the age-rating questionnaire, agreements, and the final *Submit for
+Review* click.
+
 ## Before the App Store submission
 
 Blockers a reviewer will hit with the current app, in order of importance:
