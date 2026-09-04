@@ -71,11 +71,12 @@
     .hero p.lead { font-size: 20px; max-width: 640px; margin: 22px 0 30px; color: var(--ink-2); }
     .downloads { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
     .downloads .note { width: 100%; font-size: 13px; color: var(--faint); margin-top: 6px; }
-    .shots { margin-top: 56px; display: grid; grid-template-columns: 1fr 260px; gap: 20px; align-items: start; }
+    .shots { margin-top: 56px; display: grid; grid-template-columns: 1fr 230px 230px; gap: 20px; align-items: start; }
     .shots figure { margin: 0; }
     .shots .frame { border: var(--hairline); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
     .shots figcaption { margin-top: 8px; }
-    @media (max-width: 820px) { .shots { grid-template-columns: 1fr; } .shots .phone { max-width: 260px; } }
+    @media (max-width: 920px) { .shots { grid-template-columns: 1fr 1fr; } .shots .desktop { grid-column: 1 / -1; } }
+    @media (max-width: 560px) { .shots { grid-template-columns: 1fr; } .shots .phone { max-width: 260px; } }
 
     /* steps */
     .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
@@ -140,13 +141,17 @@
       </div>
 
       <div class="shots">
-        <figure>
+        <figure class="desktop">
           <div class="frame"><img src="img/desktop-console.png" width="1280" height="590" alt="The Photobank desktop app: the administrator's Console showing the library size, the address on the network, and where photos are stored" /></div>
           <figcaption class="mono">Desktop · the Console: server, accounts, redundancy backup</figcaption>
         </figure>
         <figure class="phone">
           <div class="frame"><img src="img/phone-backup.png" width="560" height="1217" alt="The Photobank iPhone app's backup screen with counts of photos on the phone, backed up, and left to sync" /></div>
           <figcaption class="mono">iPhone · backup at a glance</figcaption>
+        </figure>
+        <figure class="phone">
+          <div class="frame"><img src="img/phone-library.jpg" width="560" height="1217" alt="The Photobank iPhone app's Library: months of photos with a cloud badge on each backed-up one, filtered by All, Server or Phone" /></div>
+          <figcaption class="mono">iPhone · the library, by month</figcaption>
         </figure>
       </div>
     </div>
