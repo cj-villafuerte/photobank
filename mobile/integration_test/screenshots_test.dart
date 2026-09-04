@@ -50,7 +50,9 @@ void main() {
     });
 
     app.main();
-    await waitFor(tester, find.text('Backed up')); // stat cards = photo library scanned
+    // stat cards = photo library scanned; on the CI simulator the permission dialog is
+    // tapped away by a helper in the meantime, so allow it a while
+    await waitFor(tester, find.text('Backed up'), seconds: 60);
     await settle(tester, seconds: 2);
     await binding.takeScreenshot('01-backup');
 
@@ -59,8 +61,9 @@ void main() {
     await settle(tester, seconds: 8); // let the thumbnails in view finish loading
     await binding.takeScreenshot('02-library');
 
-    // open the first photo
-    final thumbs = find.descendant(of: find.byType(GridView), matching: find.byType(GestureDetector));
+    // open the first photo: every server tile in the merged view carries a cloud badge,
+    // and tapping the badge taps the tile
+    final thumbs = find.byIcon(Icons.cloud_done);
     if (thumbs.evaluate().isNotEmpty) {
       await tester.tap(thumbs.first);
       await settle(tester, seconds: 5);
