@@ -205,6 +205,16 @@ class PhotobankApi {
     return token!;
   }
 
+  /// Sets a new password for the signed-in account (the server checks the current one).
+  Future<void> changePassword(String current, String next) async {
+    final res = await http.post(
+      _u('/api/auth/change-password'),
+      headers: _headers,
+      body: jsonEncode({'current_password': current, 'new_password': next}),
+    );
+    if (res.statusCode != 204) throw ApiException(res.statusCode, _detail(res));
+  }
+
   Future<Map<String, dynamic>> me() async {
     final res = await http.get(_u('/api/auth/me'), headers: _headers);
     if (res.statusCode != 200) throw ApiException(res.statusCode, _detail(res));

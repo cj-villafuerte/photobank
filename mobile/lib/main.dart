@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:background_fetch/background_fetch.dart';
 import 'package:bonsoir/bonsoir.dart';
 import 'package:flutter/material.dart';
@@ -52,6 +54,7 @@ class RootGate extends StatefulWidget {
 class _RootGateState extends State<RootGate> {
   bool _loading = true;
   PhotobankApi? _api;
+  String? _notice; // why the setup screen is back (server unreachable, sign-in ended)
 
   @override
   void initState() {
@@ -64,42 +67,79 @@ class _RootGateState extends State<RootGate> {
     final url = prefs.getString('server_url');
     final token = prefs.getString('token');
     if (url != null && token != null) {
-      _api = PhotobankApi(baseUrl: url, token: token);
-      // is this the public demo server? (adapts the UI) - best effort, never blocks long
+      final api = PhotobankApi(baseUrl: url, token: token);
+      // the server has to answer before the app opens on it: an unreachable server is
+      // said out loud on the setup screen, not shown as a library that never loads
       try {
-        await _api!.checkHealth().timeout(const Duration(seconds: 3));
-      } catch (_) {}
+        await api.checkHealth().timeout(const Duration(seconds: 8));
+        _api = api;
+      } catch (_) {
+        _notice = 'Could not reach ${serverLabel(url)}. It may be off, or this phone is on another network.';
+      }
     }
     setState(() => _loading = false);
   }
 
-  void _onLoggedIn(PhotobankApi api) => setState(() => _api = api);
+  void _onLoggedIn(PhotobankApi api) => setState(() {
+        _api = api;
+        _notice = null;
+      });
 
   Future<void> _onLogout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
-    setState(() => _api = null);
+    setState(() {
+      _api = null;
+      _notice = null;
+    });
+  }
+
+  /// The server stopped answering, or the sign-in was revoked: back to the setup screen
+  /// with the reason on it. Saved accounts stay, so returning is one tap.
+  Future<void> _onDisconnected(String reason) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('token');
+    if (mounted) {
+      setState(() {
+        _api = null;
+        _notice = reason;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (_api == null) return SetupPage(onLoggedIn: _onLoggedIn);
-    return HomeShell(api: _api!, onLogout: _onLogout);
+    if (_api == null) return SetupPage(onLoggedIn: _onLoggedIn, notice: _notice);
+    return HomeShell(api: _api!, onLogout: _onLogout, onDisconnected: _onDisconnected);
   }
+}
+
+/// How a server is called in messages: its host, or "the demo server".
+String serverLabel(String url) {
+  if (SavedAccounts.normalize(url) == demoServerUrl) return 'the demo server';
+  final host = Uri.tryParse(url)?.host;
+  return (host == null || host.isEmpty) ? url : host;
 }
 
 /// Bottom navigation between the backup screen and the server library.
 class HomeShell extends StatefulWidget {
   final PhotobankApi api;
   final Future<void> Function() onLogout;
-  const HomeShell({super.key, required this.api, required this.onLogout});
+  /// The server went away or rejected the sign-in; the shell is about to be replaced.
+  final Future<void> Function(String reason) onDisconnected;
+  const HomeShell({super.key, required this.api, required this.onLogout, required this.onDisconnected});
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _tab = 0;
+  // connection watchdog: a quick authenticated call every 15 s while the app is open
+  Timer? _probe;
+  int _misses = 0;
+  bool _probing = false;
+  bool _gone = false;
   // Bumped when the server library changed under us (a backup uploaded something) or
   // the Library tab is reopened after a while; LibraryPage re-reads on every bump.
   final _libraryRefresh = ValueNotifier<int>(0);
@@ -126,6 +166,8 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    _probe?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _libraryRefresh.dispose();
     _searchCtrl.dispose();
     super.dispose();
@@ -134,12 +176,52 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _probe = Timer.periodic(const Duration(seconds: 15), (_) => _checkServer());
     // first sign-in on this phone: show the tour once
     OnboardingPage.isDone().then((done) {
       if (!done && mounted) {
         Navigator.push(context, MaterialPageRoute(builder: (_) => const OnboardingPage(), fullscreenDialog: true));
       }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _misses = 0; // a fresh look after coming back, not a verdict from before
+      _checkServer();
+    }
+  }
+
+  /// Is the server still there? Two misses in a row (about half a minute) or a rejected
+  /// token send the app back to the setup screen with the reason, instead of pages that
+  /// fail quietly one by one.
+  Future<void> _checkServer() async {
+    if (_probing || _gone || !mounted) return;
+    _probing = true;
+    try {
+      await widget.api.me().timeout(const Duration(seconds: 8));
+      _misses = 0;
+    } on ApiException catch (e) {
+      if (e.status == 401 || e.status == 403) {
+        _gone = true;
+        _probe?.cancel();
+        await widget.onDisconnected(
+            'Your sign-in on ${serverLabel(widget.api.baseUrl)} ended - sign in again to continue.');
+      }
+      // any other status: the server is up, just unhappy - not a disconnect
+    } catch (_) {
+      _misses++;
+      if (_misses >= 2) {
+        _gone = true;
+        _probe?.cancel();
+        await widget.onDisconnected(
+            'Lost the connection to ${serverLabel(widget.api.baseUrl)}. It may be off, or this phone left the Wi-Fi.');
+      }
+    } finally {
+      _probing = false;
+    }
   }
 
   @override
@@ -220,7 +302,9 @@ class FoundServer {
 
 class SetupPage extends StatefulWidget {
   final void Function(PhotobankApi) onLoggedIn;
-  const SetupPage({super.key, required this.onLoggedIn});
+  /// Shown at the top when the app came back here on its own (server lost, sign-in ended).
+  final String? notice;
+  const SetupPage({super.key, required this.onLoggedIn, this.notice});
   @override
   State<SetupPage> createState() => _SetupPageState();
 }
@@ -232,6 +316,11 @@ class _SetupPageState extends State<SetupPage> {
   bool _manual = false;
   final _url = TextEditingController();
   List<SavedAccount> _savedServers = []; // one entry per server, most recent first
+  // discovery runs for a minute, then stops and says so; a tap starts it again
+  static const _scanFor = Duration(seconds: 60);
+  Timer? _scanTimer;
+  bool _scanning = false;
+  bool _noticeDismissed = false;
 
   @override
   void initState() {
@@ -247,13 +336,26 @@ class _SetupPageState extends State<SetupPage> {
   }
 
   Future<void> _startDiscovery() async {
+    _scanTimer?.cancel();
+    final previous = _discovery;
+    _discovery = null;
+    try {
+      await previous?.stop();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _scanning = true;
+      _found.clear();
+      _resolving.clear();
+    });
+    _scanTimer = Timer(_scanFor, _stopDiscovery);
     try {
       final discovery = BonsoirDiscovery(type: '_photobank._tcp');
       _discovery = discovery;
       await discovery.ready;
       discovery.eventStream!.listen((event) {
         final service = event.service;
-        if (service == null || !mounted) return;
+        if (service == null || !mounted || discovery != _discovery) return;
         if (event.type == BonsoirDiscoveryEventType.discoveryServiceFound) {
           setState(() => _resolving.add(service.name));
           service.resolve(discovery.serviceResolver);
@@ -289,12 +391,28 @@ class _SetupPageState extends State<SetupPage> {
       await discovery.start();
     } catch (_) {
       // discovery unavailable (permissions, platform) - manual entry still works
-      if (mounted) setState(() => _manual = true);
+      _scanTimer?.cancel();
+      if (mounted) {
+        setState(() {
+          _manual = true;
+          _scanning = false;
+        });
+      }
     }
+  }
+
+  /// A minute is plenty on a working Wi-Fi: stop the radio chatter and say so.
+  void _stopDiscovery() {
+    _scanTimer?.cancel();
+    final d = _discovery;
+    _discovery = null;
+    d?.stop();
+    if (mounted) setState(() => _scanning = false);
   }
 
   @override
   void dispose() {
+    _scanTimer?.cancel();
     _discovery?.stop();
     _url.dispose();
     super.dispose();
@@ -358,19 +476,55 @@ class _SetupPageState extends State<SetupPage> {
                 const SizedBox(height: 6),
                 Text('BY CJ VILLAFUERTE', textAlign: TextAlign.center, style: pbMono(size: 10)),
                 const SizedBox(height: 28),
-                Row(
-                  children: [
-                    const SizedBox(
-                      width: 16, height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                // why we are back here, when the app brought us here itself
+                if (widget.notice != null && !_noticeDismissed) ...[
+                  Card(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      side: const BorderSide(color: PbColors.accent),
                     ),
-                    const SizedBox(width: 10),
-                    Text('Looking for servers on your network…',
-                        style: Theme.of(context).textTheme.bodyMedium),
-                  ],
-                ),
+                    child: ListTile(
+                      leading: const Icon(Icons.wifi_off, color: PbColors.accent),
+                      title: Text(widget.notice!),
+                      titleTextStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: PbColors.ink),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close),
+                        tooltip: 'Dismiss',
+                        onPressed: () => setState(() => _noticeDismissed = true),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (_scanning)
+                  Row(
+                    children: [
+                      const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('Looking for servers on your network…',
+                          style: Theme.of(context).textTheme.bodyMedium),
+                    ],
+                  )
+                else if (servers.isEmpty)
+                  // a minute went by with nothing: say so, and make the whole card the retry
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.wifi_find),
+                      title: const Text("Can't find servers at the moment"),
+                      subtitle: const Text(
+                          'Make sure Photobank is open on your computer and this phone is on the same '
+                          'Wi-Fi. Tap to look again.'),
+                      trailing: const Icon(Icons.refresh),
+                      onTap: _startDiscovery,
+                    ),
+                  )
+                else
+                  Text('SERVERS ON THIS WI-FI', style: pbMono(size: 10)),
                 const SizedBox(height: 12),
-                if (servers.isEmpty)
+                if (_scanning && servers.isEmpty)
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),

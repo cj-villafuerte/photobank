@@ -146,6 +146,92 @@ class _SettingsPageState extends State<SettingsPage> {
     await widget.onLogout();
   }
 
+  /// Current + new password in a dialog; the server verifies the current one.
+  Future<void> _changePassword() async {
+    final current = TextEditingController();
+    final next = TextEditingController();
+    final again = TextEditingController();
+    String? error;
+    var busy = false;
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Change password'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: current,
+                obscureText: true,
+                autocorrect: false,
+                decoration: const InputDecoration(labelText: 'Current password'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: next,
+                obscureText: true,
+                autocorrect: false,
+                decoration: const InputDecoration(labelText: 'New password (min 8)'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: again,
+                obscureText: true,
+                autocorrect: false,
+                decoration: const InputDecoration(labelText: 'Repeat new password'),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 10),
+                Text(error!, style: TextStyle(color: Theme.of(ctx).colorScheme.error, fontSize: 13)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: busy ? null : () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      if (next.text.length < 8) {
+                        setLocal(() => error = 'The new password needs at least 8 characters.');
+                        return;
+                      }
+                      if (next.text != again.text) {
+                        setLocal(() => error = 'The new passwords do not match.');
+                        return;
+                      }
+                      setLocal(() {
+                        busy = true;
+                        error = null;
+                      });
+                      try {
+                        await widget.api.changePassword(current.text, next.text);
+                        if (ctx.mounted) Navigator.pop(ctx, true);
+                      } on ApiException catch (e) {
+                        setLocal(() {
+                          busy = false;
+                          error = e.message;
+                        });
+                      } catch (_) {
+                        setLocal(() {
+                          busy = false;
+                          error = 'Could not reach the server.';
+                        });
+                      }
+                    },
+              child: Text(busy ? '…' : 'Change'),
+            ),
+          ],
+        ),
+      ),
+    );
+    current.dispose();
+    next.dispose();
+    again.dispose();
+    if (changed == true) _toast('Password changed - use it on every device from now on');
+  }
+
   Future<bool> _confirm(String title, String body, String action) async {
     return await showDialog<bool>(
           context: context,
@@ -401,6 +487,15 @@ class _SettingsPageState extends State<SettingsPage> {
                       context, MaterialPageRoute(builder: (_) => const OnboardingPage(), fullscreenDialog: true)),
                 ),
                 const Divider(height: 1),
+                if (widget.api.demo == null) ...[
+                  ListTile(
+                    leading: const Icon(Icons.password),
+                    title: const Text('Change password'),
+                    subtitle: const Text('For this account, on every device'),
+                    onTap: _changePassword,
+                  ),
+                  const Divider(height: 1),
+                ],
                 ListTile(
                   leading: const Icon(Icons.logout),
                   title: const Text('Log out'),
@@ -430,8 +525,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     subtitle: Text(me['email']?.toString() ?? ''),
                   ),
                 Text(
-                  'Passwords and member accounts are managed in the Photobank app on the computer '
-                  '(or its web page at the address above).',
+                  'Member accounts are created, and forgotten passwords reset, in the Photobank app '
+                  'on the computer (or its web page at the address above).',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],

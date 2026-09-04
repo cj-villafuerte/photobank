@@ -79,9 +79,10 @@ class _LibraryPageState extends State<LibraryPage> {
   bool _sizeLoading = false;
   Set<String> _collapsed = {}; // month buckets folded up in the date view
 
-  // What the timeline shows: 'all' merges the server with the phone's not-yet-backed-up
-  // photos, 'server' is the server only, 'phone' is the camera roll with a cloud on
-  // everything already backed up.
+  // What the timeline shows: 'all' merges the server with the photos that are only on
+  // this phone, 'server' is the server only, 'phone' is only what is not backed up yet.
+  // A backed-up photo is always its server copy (favorites, albums, playback), whatever
+  // the filter - the filter changes which photos show, never what a photo can do.
   String _source = 'all';
   List<AssetEntity> _phone = [];
   Set<String> _synced = {};
@@ -156,7 +157,7 @@ class _LibraryPageState extends State<LibraryPage> {
     final phoneByMonth = <String, List<AssetEntity>>{};
     if (_source != 'server' && !_favorites) {
       for (final a in _phone) {
-        if (_source == 'all' && _synced.contains(a.id)) continue; // shown as its server copy
+        if (_synced.contains(a.id)) continue; // backed up: shown as its server copy
         phoneByMonth.putIfAbsent(_monthKey(a.createDateTime), () => []).add(a);
       }
     }
@@ -440,7 +441,7 @@ class _LibraryPageState extends State<LibraryPage> {
                     segments: const [
                       ButtonSegment(value: 'all', label: Text('All')),
                       ButtonSegment(value: 'server', icon: Icon(Icons.cloud_done_outlined, size: 16), label: Text('Server')),
-                      ButtonSegment(value: 'phone', icon: Icon(Icons.smartphone, size: 16), label: Text('Phone')),
+                      ButtonSegment(value: 'phone', icon: Icon(Icons.smartphone, size: 16), label: Text('Phone only')),
                     ],
                     selected: {_source},
                     onSelectionChanged: (sel) => _setSource(sel.first),
@@ -561,7 +562,7 @@ class _LibraryPageState extends State<LibraryPage> {
           Expanded(
             child: Center(
               child: Text(_source == 'phone'
-                  ? 'No photos on this phone (or no photo access).'
+                  ? 'Nothing is only on this phone - everything is backed up (or the app has no photo access).'
                   : _source == 'server'
                       ? 'The server library is empty.'
                       : 'Nothing here yet - back up some photos or upload from the web.'),
