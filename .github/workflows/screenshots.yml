@@ -57,7 +57,10 @@ jobs:
             --target integration_test/screenshots_test.dart \
             --dart-define=PB_SERVER="${{ inputs.server }}"
 
-      - name: Install and pre-grant photo access
+      # Install, grant photo access, and launch the app ourselves. `flutter drive` would
+      # reinstall the app (wiping the grant) and race the launch; instead the app starts
+      # with a fixed VM-service port and the driver attaches to it (--use-existing-app).
+      - name: Install, grant photo access, launch
         run: |
           APP=build/ios/iphonesimulator/Runner.app
           xcrun simctl install "$UDID" "$APP"
@@ -65,30 +68,31 @@ jobs:
           xcrun simctl privacy "$UDID" grant photos-add "$BUNDLE_ID" || true
           # a clean, believable status bar for the captures
           xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
+          mkdir -p diag
+          xcrun simctl spawn "$UDID" log stream --style compact --predicate 'process == "Runner" OR eventMessage CONTAINS "Photobank"' > diag/sim-app.log 2>&1 &
+          echo "LOGPID=$!" >> "$GITHUB_ENV"
+          xcrun simctl launch "$UDID" "$BUNDLE_ID" \
+            --enable-dart-profiling --disable-service-auth-codes \
+            --vm-service-port=54321 --observatory-port=54321
+          for i in $(seq 1 60); do
+            curl -sf "http://127.0.0.1:54321/" >/dev/null 2>&1 && { echo "VM service up after ${i}s"; break; }
+            sleep 1
+          done
 
       - name: Drive the app and capture
         timeout-minutes: 15
         run: |
           rm -rf fastlane/screenshots/en-US
-          mkdir -p diag
-          # the app's own log lines while the drive runs (where did it stall?)
-          xcrun simctl spawn "$UDID" log stream --style compact --predicate 'process == "Runner" OR eventMessage CONTAINS "Photobank"' > diag/sim-app.log 2>&1 &
-          LOGPID=$!
-          # `flutter drive` reinstalls the app before launching it, which wipes the privacy
-          # grants made above; keep re-granting until the app is up so the photo-permission
-          # dialog never appears (the test waits a few seconds before starting the app)
-          ( for i in $(seq 1 90); do xcrun simctl privacy "$UDID" grant photos "$BUNDLE_ID" >/dev/null 2>&1; xcrun simctl privacy "$UDID" grant photos-add "$BUNDLE_ID" >/dev/null 2>&1; sleep 1; done ) &
-          GRANTPID=$!
           set +e
           flutter drive -v \
+            --use-existing-app=http://127.0.0.1:54321/ \
             --driver test_driver/integration_test.dart \
             --target integration_test/screenshots_test.dart \
-            --use-application-binary build/ios/iphonesimulator/Runner.app \
             --dart-define=PB_SERVER="${{ inputs.server }}" \
             -d "$UDID" > diag/flutter-drive.log 2>&1
           RC=$?
           set -e
-          kill $GRANTPID $LOGPID 2>/dev/null || true
+          kill $LOGPID 2>/dev/null || true
           xcrun simctl io "$UDID" screenshot diag/simulator-at-end.png || true
           grep -E "saved fastlane|All tests passed|Some tests failed|Exception|Error|error" diag/flutter-drive.log | head -60 || true
           ls -la fastlane/screenshots/en-US 2>/dev/null || echo "no screenshots written"
