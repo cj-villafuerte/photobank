@@ -4,6 +4,8 @@ A Photobank that anyone can log into - App Review, people deciding whether to in
 you showing it off. Same code as every other server, switched into **demo mode** with
 `DEMO_MODE=true`, and small enough for a 0.5 GB RAM / 1 GB disk container.
 
+The public instance: **https://photobank-demo-production.up.railway.app** (login prefilled).
+
 ## What demo mode does
 
 | Area | Behaviour |

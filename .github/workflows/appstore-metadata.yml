@@ -35,6 +35,7 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
       REVIEW_CONTACT_PHONE: ${{ secrets.REVIEW_CONTACT_PHONE }}
+      REVIEW_CONTACT_EMAIL: ${{ secrets.REVIEW_CONTACT_EMAIL }}
       DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
       FASTLANE_SKIP_UPDATE_CHECK: "1"
       FASTLANE_HIDE_CHANGELOG: "1"
@@ -52,7 +53,9 @@ jobs:
           for v in ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_P8_BASE64; do
             [ -n "${!v}" ] || { echo "::error::missing secret $v"; exit 1; }
           done
-          [ -n "$REVIEW_CONTACT_PHONE" ] || echo "::warning::REVIEW_CONTACT_PHONE not set - App Review contact phone stays empty (required before submission)"
+          for v in REVIEW_CONTACT_PHONE REVIEW_CONTACT_EMAIL; do
+            [ -n "${!v}" ] || echo "::warning::$v not set - the metadata and beta lanes need the App Review contact"
+          done
 
       - name: fastlane ${{ inputs.lane }}
         run: |

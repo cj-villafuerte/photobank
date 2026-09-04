@@ -11,14 +11,17 @@ Two channels, in this order:
 1. **Bundle ID** - developer.apple.com > Certificates, Identifiers & Profiles > Identifiers >
    `+` > App IDs > App. Bundle ID `com.cjvillafuerte.photobank` (explicit). No capabilities need
    ticking: background fetch and Bonjour are Info.plist keys, not entitlements.
-2. **App record** - appstoreconnect.apple.com > Apps > `+`. Name (check it's free; "Photobank"
-   probably isn't - "Photobank by CJ Villafuerte" works), primary language, bundle ID from step 1,
-   SKU `photobank-ios`.
-3. **API key** - App Store Connect > Users and Access > Integrations > App Store Connect API >
-   Team Keys > Generate. Role **App Manager** (needed for Xcode's cloud-managed signing
-   certificate). Download the `.p8` **once** - it can't be downloaded again. Note the
-   **Key ID** and the **Issuer ID** shown above the table.
-4. **Team ID** - developer.apple.com > Membership details (10 characters).
+2. **App record** - appstoreconnect.apple.com > Apps > `+`. Name must be unique on the store
+   (ours: "Photobank: Self-Hosted Photos"), primary language, bundle ID from step 1,
+   SKU `photobank-ios`, Full Access.
+3. **API key** - App Store Connect > Users and Access > **Integrations** tab > App Store Connect
+   API > Team Keys > Generate. Role **App Manager** and tick **Access to Cloud Managed
+   Distribution Certificate** - without that box the archive signs but the export fails with
+   "Cloud signing permission error" (the alternative is the `.p12` route below). Download the
+   `.p8` **once** - it can't be downloaded again. Note the **Key ID** (in the row) and the
+   **Issuer ID** (the UUID above the table).
+4. **Team ID** - developer.apple.com > Membership details (10 characters; also the suffix shown
+   after each App ID).
 
 ## Repository secrets (GitHub > Settings > Secrets and variables > Actions)
 
@@ -29,13 +32,20 @@ Two channels, in this order:
 | `ASC_ISSUER_ID` | API issuer ID (UUID) |
 | `ASC_API_KEY_P8_BASE64` | `base64 -i AuthKey_XXXXXXXXXX.p8 \| pbcopy` on the Mac |
 
-From a terminal with `gh` logged in:
+From a terminal with `gh` logged in (macOS/Linux):
 
 ```bash
 gh secret set APPLE_TEAM_ID
 gh secret set ASC_KEY_ID
 gh secret set ASC_ISSUER_ID
 base64 -i ~/Downloads/AuthKey_XXXXXXXXXX.p8 | gh secret set ASC_API_KEY_P8_BASE64
+```
+
+On Windows use `--body` instead of piping: PowerShell appends a CRLF to piped text, and the
+`\r` breaks `base64 --decode` on the runner:
+
+```powershell
+gh secret set ASC_API_KEY_P8_BASE64 --body ([Convert]::ToBase64String([IO.File]::ReadAllBytes("AuthKey_XXXXXXXXXX.p8")))
 ```
 
 Optional - only if cloud signing is refused (e.g. the team already has 3 distribution
@@ -75,8 +85,10 @@ Actions → *App Store Connect (listing / TestFlight distribution)* → Run work
 | `beta` | Distributes the latest processed TestFlight build to an external group (default "Friends") with What to Test + beta review info and submits it for beta review. `tester_email` invites one person (no App Store Connect account needed - just the TestFlight app). | `fastlane/whats_new.txt`, `fastlane/beta_description.txt` |
 | `screenshots` | Uploads `fastlane/screenshots/<locale>/*.png` (6.9"/6.7"/6.5" iPhone sizes, device detected from filename). | drop PNGs in `fastlane/screenshots/en-US/` |
 
-Extra secrets: `REVIEW_CONTACT_PHONE` (E.164, e.g. `+639171234567` - App Review's contact
-phone, required before submission) and `DEMO_PASSWORD` (the demo server's).
+Extra secrets: `REVIEW_CONTACT_PHONE` (E.164, e.g. `+639171234567`) and `REVIEW_CONTACT_EMAIL` -
+App Review's contact; Apple refuses review details without a valid phone, and `deliver` needs
+those details to exist before it can write anything else, so both lanes require them - and
+`DEMO_PASSWORD` (the demo server's; defaults to the value in `server/app/config.py`).
 
 Still manual (UI only): the age-rating questionnaire, agreements, and the final *Submit for
 Review* click.
@@ -103,16 +115,7 @@ Already handled in the project: `NSAllowsArbitraryLoads` removed (local-network 
 `ITSAppUsesNonExemptEncryption=false` (no export questionnaire per upload), usage strings for
 Photos / Local Network / Bonjour, background modes declared.
 
-### Review notes template
+### Review notes
 
-> Photobank is a companion app for a self-hosted photo server that users run on their own
-> computer (open source: github.com/cj-villafuerte/photobank). It backs up the camera roll
-> to that server over the home network.
->
-> Demo server for review: https://demo.example.com  -  email: review@example.com  -
-> password: ********  (enter the URL on the first screen, then log in).
->
-> "Free up space" removes photos from the phone only after the server has confirmed, by
-> checksum, that it holds a copy; every run shows a confirmation with the exact count first.
-> Background Fetch is used to continue backups while the phone charges. No analytics or
-> third-party services are used.
+The text App Review sees lives in `fastlane/review_notes.txt` (demo URL and login are filled
+in by the lane); the beta "What to Test" text is `fastlane/whats_new.txt`.

@@ -7,6 +7,14 @@ who want to double-click an app instead of running containers. A desktop app (Wi
 runs the server; the web UI works from any device on your network; the iPhone app finds the
 server automatically, backs up your camera roll, and can free space on the phone safely.
 
+Free and open source (MIT), made by **CJ Villafuerte**. No telemetry — see [PRIVACY.md](PRIVACY.md).
+
+## Try it
+
+**Live demo:** https://photobank-demo-production.up.railway.app — the login is prefilled.
+The sample library is read-only and anything you upload is removed after a minute.
+The iPhone app can point at it too (enter the address manually on the first screen).
+
 ## Download
 
 Grab the latest build from **[Releases](https://github.com/cj-villafuerte/photobank/releases)**:
@@ -15,35 +23,31 @@ Grab the latest build from **[Releases](https://github.com/cj-villafuerte/photob
 |---|---|---|
 | Windows 10/11 | `Photobank-Windows.zip` | unzip, run `Photobank.exe` (SmartScreen: More info → Run anyway) |
 | macOS 13+ | `Photobank-macOS.zip` | unzip, drag to Applications, right-click → Open the first time |
-| iPhone | `Photobank-iOS-unsigned.ipa` | sideload with [Sideloadly](https://sideloadly.io) until the App Store release |
+| iPhone | TestFlight / App Store (coming) | meanwhile: `Photobank-iOS-unsigned.ipa`, sideloaded with [Sideloadly](https://sideloadly.io) |
 
 Optional helpers for video thumbnails and text search: `winget install Gyan.FFmpeg` +
 `winget install UB-Mannheim.TesseractOCR` (Windows) or `brew install ffmpeg tesseract` (macOS).
 
-Free and open source (MIT), made by **CJ Villafuerte**. No telemetry — see [PRIVACY.md](PRIVACY.md).
+## Features
 
-**Public demo:** the server has a demo mode (shared account, read-only sample library,
-uploads that self-destruct) and ships with a `Dockerfile` — see [DEMO.md](DEMO.md).
+- Upload from any browser or from the phone: JPEG, PNG, HEIC, WebP, GIF, MP4, MOV, Live Photos
+- EXIF (date, GPS, camera) and video metadata; WebP thumbnails with correct colors (ICC → sRGB, HDR-aware)
+- Timeline by month, favorites, albums, trash with restore, hidden photos
+- Search text inside photos (Tesseract OCR), find visually similar duplicates, storage dashboard
+- Multi-user with private libraries; on the desktop app the computer's user is the passwordless administrator
+- Redundancy backup to a second disk/NAS with a portable JSON export; SQLite ⇄ PostgreSQL mirroring
+- Public **demo mode** for showing it off or App Review (see [DEMO.md](DEMO.md))
 
 ---
 
 The sections below cover running the server from source (FastAPI + PostgreSQL or SQLite)
 and developing the apps.
 
-## Features
-
-- Upload photos & videos from any browser (JPEG, PNG, HEIC, WebP, GIF, MP4, MOV, …)
-- Automatic EXIF extraction (date taken, GPS, camera), video metadata via ffprobe
-- Thumbnails + previews (WebP), generated in the background
-- Timeline grouped by month, lazy-loaded; lightbox with video playback
-- Duplicate detection (SHA-256 per user)
-- Albums, favorites, trash with restore
-- Multi-user with per-user libraries; first registered user becomes admin
-
 ## Requirements
 
-- Windows 10/11, Python 3.12+ (`py`), Node 18+, PostgreSQL (any recent version, running locally)
-- ffmpeg (for video support): `winget install Gyan.FFmpeg`, then open a new terminal
+- Windows 10/11 or macOS, Python 3.12+ (`py`), Node 18+
+- PostgreSQL (any recent version) for the from-source setup below; the desktop app uses SQLite
+- ffmpeg for video support: `winget install Gyan.FFmpeg`, then open a new terminal
 
 ## Setup (once)
 
@@ -86,10 +90,11 @@ Register-ScheduledTask -TaskName "Photobank" -Trigger (New-ScheduledTaskTrigger 
 
 ## Notes & limitations
 
-- **HTTP only**: sessions use cookies without the `Secure` flag because the LAN runs plain HTTP.
-  Don't expose the port to the internet as-is; use a VPN (e.g. Tailscale/WireGuard) for remote access.
+- **HTTP only on the LAN**: sessions use cookies without the `Secure` flag because the home
+  network runs plain HTTP. Don't expose the port to the internet as-is; use a VPN (e.g.
+  Tailscale/WireGuard) for remote access. Behind HTTPS (as the demo is) everything works too.
 - Registration is open by default; set `ALLOW_REGISTRATION=false` in `.env` after your household
-  has accounts (admins can still create users from the Admin page).
+  has accounts (administrators can still create members from the Console).
 - Video playback streams the original file — H.264 MP4/MOV plays everywhere; exotic codecs may not.
 - Trash keeps files on disk until you empty it or delete items permanently.
 
@@ -98,7 +103,7 @@ Register-ScheduledTask -TaskName "Photobank" -Trigger (New-ScheduledTaskTrigger 
 `mobile/` is a Flutter "sync companion": it logs into your server, backs up the
 camera roll (skipping anything the server already has, verified by SHA-256), and
 its **Free up space** button deletes photos from the phone — but only ones the
-server just confirmed it still holds.
+server just confirmed it still holds. See [mobile/README.md](mobile/README.md).
 
 **iOS install (sideloading, no Mac needed):** every push touching `mobile/`
 builds an unsigned IPA via GitHub Actions (macOS runner). Download the
@@ -108,19 +113,20 @@ sign in with your Apple ID. With a free Apple ID the app expires after 7 days �
 re-sideload to renew. On the phone: Settings → General → VPN & Device
 Management → trust your developer certificate.
 
-First launch: enter your server's LAN URL (e.g. `http://192.168.1.23:8000`),
+First launch: pick the server the app found, or enter its address (e.g. `http://192.168.1.23:8000`),
 log in, grant photo access ("All Photos"). Backups run while the app is open.
 
 **Android:** `flutter build apk` in `mobile/` produces an installable APK directly.
 
-**TestFlight / App Store:** see [mobile/TESTFLIGHT.md](mobile/TESTFLIGHT.md) - the
-*TestFlight* GitHub Actions workflow signs and uploads a build from an App Store Connect
-API key; the doc also lists what App Review needs (a reachable demo server, mostly).
+**TestFlight / App Store:** see [mobile/TESTFLIGHT.md](mobile/TESTFLIGHT.md) — a signed build
+workflow plus fastlane lanes for the listing, review info, privacy details and tester distribution.
 
 ## Desktop app
 
 `Photobank.exe` / `Photobank.app` runs the server (SQLite) with a native window and a
-tray / menu-bar icon; closing the window keeps the server running for phone syncs.
+tray / menu-bar icon; closing the window keeps the server running for phone syncs. The
+computer's user is the administrator (no password); members sign in with theirs, and
+"View as member…" shows a member's library inside the same window.
 
 - **Windows:** `.\scripts\build-desktop.ps1` → `server\dist\Photobank\Photobank.exe`
 - **macOS:** built by GitHub Actions (`Build macOS desktop app` workflow) → download
@@ -149,8 +155,12 @@ Recover from Postgres with `--from pg --to desktop --replace`.
 ## Layout
 
 ```
-server/   FastAPI app (SQLAlchemy models, ingest pipeline, REST API, serves web/dist)
-web/      React SPA (Vite + TypeScript + React Query)
-mobile/   Flutter sync-companion app (camera-roll backup + free-up-space)
-scripts/  PowerShell: setup / dev / start / firewall
+server/     FastAPI app (models, ingest pipeline, REST API, demo mode, desktop entry point; serves web/dist)
+web/        React SPA (Vite + TypeScript + React Query)
+mobile/     Flutter app (camera-roll backup + free-up-space + library) and fastlane/ release lanes
+assets/     app icon sources and generated .ico / .icns
+scripts/    PowerShell: setup / dev / start / firewall / build-desktop / make-icons
+Dockerfile  server image (used by the public demo on Railway)
 ```
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed when, and [THEME.md](THEME.md) for the design language.

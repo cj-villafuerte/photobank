@@ -1,13 +1,14 @@
 # App Store Connect automation. Run from GitHub Actions (appstore-metadata.yml) or
 # locally on a Mac: `cd mobile && bundle install && bundle exec fastlane ios metadata`.
 # Auth: ASC_KEY_ID / ASC_ISSUER_ID / ASC_API_KEY_P8_BASE64 (same secrets as the
-# TestFlight workflow). Contact for App Review: REVIEW_CONTACT_PHONE (E.164, e.g. +63...).
+# TestFlight workflow). Contact for App Review: REVIEW_CONTACT_PHONE (E.164, e.g. +63...)
+# and REVIEW_CONTACT_EMAIL - kept out of the repo, they're personal.
 
 default_platform(:ios)
 
 CONTACT_FIRST = "CJ"
 CONTACT_LAST = "Villafuerte"
-CONTACT_EMAIL = "cjvillafuerte02@gmail.com"
+CONTACT_EMAIL = ENV["REVIEW_CONTACT_EMAIL"].to_s.strip
 DEMO_URL = "https://photobank-demo-production.up.railway.app"
 DEMO_USER = "demo@photobank.app"
 DEMO_PASSWORD = ENV["DEMO_PASSWORD"] || "demo-photobank-2026"
@@ -33,7 +34,7 @@ end
 
 # Apple rejects App Review details without a valid contact phone, so this is all-or-nothing.
 def review_info
-  return nil if contact_phone.empty?
+  return nil if contact_phone.empty? || CONTACT_EMAIL.empty?
   {
     first_name: CONTACT_FIRST,
     last_name: CONTACT_LAST,
@@ -55,7 +56,7 @@ platform :ios do
     # version that record only exists once review info (with a valid phone) was written,
     # otherwise spaceship dies with "No data". So the phone is required here too.
     info = review_info
-    UI.user_error!("REVIEW_CONTACT_PHONE secret is required (E.164, e.g. +639171234567): App Store Connect needs a contact phone on the review details before anything else can be written") if info.nil?
+    UI.user_error!("REVIEW_CONTACT_PHONE (E.164, e.g. +639171234567) and REVIEW_CONTACT_EMAIL secrets are required: App Store Connect needs the review contact before anything else can be written") if info.nil?
     deliver(
       api_key: key,
       app_version: version,            # creates the version in App Store Connect if it doesn't exist
@@ -89,7 +90,7 @@ platform :ios do
 
   desc "Distribute the latest processed TestFlight build to an external group with test info; optionally invite a tester."
   lane :beta do |options|
-    UI.user_error!("REVIEW_CONTACT_PHONE secret is required: external TestFlight review needs a contact phone (E.164, e.g. +639171234567)") if contact_phone.empty?
+    UI.user_error!("REVIEW_CONTACT_PHONE (E.164) and REVIEW_CONTACT_EMAIL secrets are required: external TestFlight review needs a contact") if contact_phone.empty? || CONTACT_EMAIL.empty?
     key = asc_key
     group = options[:group] || "Friends"
     if options[:tester].to_s != ""

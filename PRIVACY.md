@@ -17,6 +17,19 @@ devices you control.**
   to find your server, and local notifications you can turn off. It contains no
   advertising or tracking SDKs.
 
+## The one outside request: fonts
+
+The web app and the iPhone app load their typefaces (Bricolage Grotesque, Instrument Sans,
+DM Mono) from Google Fonts when they start. Like any web font, that request shows Google your
+IP address and nothing else about you or your library. Nothing else in Photobank contacts a
+third party.
+
+## Public demo server
+
+The demo at photobank-demo-production.up.railway.app is a shared, read-only sandbox we host
+for trying the app: whatever you upload there is deleted automatically after a minute and
+is visible to other visitors until then. Don't put private photos on it.
+
 ## Accounts
 
 Accounts exist only on your server. Passwords are stored as salted Argon2 hashes.
