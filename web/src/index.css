@@ -230,10 +230,17 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--surfac
   display: flex;
   flex-direction: column;
 }
-.lightbox .lb-top { display: flex; gap: 8px; padding: 10px 16px; align-items: center; justify-content: flex-end; border-bottom: 1px solid var(--ink2); }
-.lightbox button { background: transparent; color: var(--paper); border-color: var(--ink2); }
-.lightbox button:hover { background: var(--ink2); border-color: var(--paper); }
-.lightbox button.danger { color: var(--accent); }
+.lightbox .lb-top { display: flex; gap: 2px; padding: 8px 16px; align-items: center; border-bottom: 1px solid var(--ink2); }
+.lightbox .lb-title { margin-right: auto; font: 500 10px var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+.lightbox .lb-top button {
+  background: transparent; color: var(--paper); border: 1px solid transparent; border-radius: var(--radius);
+  padding: 6px 10px; font: 500 11px var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase;
+  display: inline-flex; align-items: center;
+}
+.lightbox .lb-top button:hover { background: var(--ink2); }
+.lightbox .lb-top button.on { color: var(--accent); }
+.lightbox .lb-top button.danger { color: var(--accent); }
+.lightbox .lb-top .fav-dot { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); margin-right: 7px; }
 .lightbox .lb-main { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; position: relative; }
 .lightbox img, .lightbox video { max-width: 95vw; max-height: calc(100vh - 120px); object-fit: contain; }
 .lightbox .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); font: 700 32px var(--font-display); border: none; padding: 12px 16px; background: transparent; }

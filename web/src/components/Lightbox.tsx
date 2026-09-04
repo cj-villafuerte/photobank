@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, AssetThin, downloadUrl, liveVideoUrl, originalUrl, previewUrl } from "../api";
+import { isDesktop } from "../App";
 import { useToast } from "./Toast";
 
 interface Props {
@@ -55,29 +56,39 @@ export default function Lightbox({
 
   return (
     <div className="lightbox">
+      {/* the inverted panel's toolbar: mono labels, no fills, the accent only for
+          the favorite mark and the destructive action (THEME.md) */}
       <div className="lb-top">
+        <span className="lb-title">
+          {new Date(asset.taken_at).toLocaleString()} · {index + 1} / {assets.length}
+        </span>
         {asset.has_live_video && (
-          <button onClick={() => setLiveActive(!liveActive)}>
-            {liveActive ? "⏸ Still" : "◉ LIVE"}
+          <button className={liveActive ? "on" : undefined} onClick={() => setLiveActive(!liveActive)}>
+            {liveActive ? "Still" : "Live"}
           </button>
         )}
         {onToggleFavorite && (
-          <button onClick={() => onToggleFavorite(asset)}>
-            {asset.is_favorite ? "💔 Unfavorite" : "❤️ Favorite"}
+          <button className={asset.is_favorite ? "on" : undefined} onClick={() => onToggleFavorite(asset)}>
+            {asset.is_favorite && <span className="fav-dot" />}
+            {asset.is_favorite ? "Favorited" : "Favorite"}
           </button>
         )}
         <a href={downloadUrl(asset.id)} download>
-          <button>⬇ Download</button>
+          <button>Download</button>
         </a>
-        <button onClick={reveal} title="Opens File Explorer on the server machine">
-          📂 Explorer
-        </button>
-        {onTrash && (
-          <button className="danger" onClick={() => onTrash(asset)}>
-            🗑 Trash
+        {isDesktop() && (
+          <button onClick={reveal} title="Show the original file in File Explorer">
+            Show file
           </button>
         )}
-        <button onClick={onClose}>✕ Close</button>
+        {onTrash && (
+          <button className="danger" onClick={() => onTrash(asset)}>
+            Trash
+          </button>
+        )}
+        <button onClick={onClose} aria-label="Close">
+          Close
+        </button>
       </div>
       <div className="lb-main" onClick={(e) => e.target === e.currentTarget && onClose()}>
         {index > 0 && (
@@ -104,9 +115,6 @@ export default function Lightbox({
             ›
           </button>
         )}
-      </div>
-      <div className="lb-caption">
-        {new Date(asset.taken_at).toLocaleString()} · {index + 1} / {assets.length}
       </div>
     </div>
   );

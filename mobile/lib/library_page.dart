@@ -3,8 +3,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show Uint8List, ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
-
-import 'sync_service.dart' show SyncService;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -454,7 +452,7 @@ class _GridItem {
   final RemoteAsset? remote;
   final AssetEntity? local;
   final DateTime when;
-  const _GridItem.remote(RemoteAsset a)
+  _GridItem.remote(RemoteAsset a)
       : remote = a,
         local = null,
         when = a.takenAt;
