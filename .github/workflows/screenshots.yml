@@ -64,9 +64,14 @@ jobs:
         run: |
           APP=build/ios/iphonesimulator/Runner.app
           xcrun simctl install "$UDID" "$APP"
-          # full photo-library access; granting `photos-add` afterwards downgrades it to
-          # add-only and the app's read request prompts again ("Keep Add Only" dialog)
-          xcrun simctl privacy "$UDID" grant all "$BUNDLE_ID" || true
+          # A privacy grant only sticks once the app has launched at least once (the
+          # simulator ignores grants for apps TCC has never seen). So: launch, let it
+          # register, terminate, grant, and only then launch for the capture. Grant
+          # `photos` alone - `photos-add` afterwards downgrades it to add-only.
+          xcrun simctl launch "$UDID" "$BUNDLE_ID" >/dev/null
+          sleep 12
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID" || true
+          sleep 2
           xcrun simctl privacy "$UDID" grant photos "$BUNDLE_ID"
           # a clean, believable status bar for the captures
           xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
