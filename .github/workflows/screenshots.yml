@@ -63,7 +63,8 @@ jobs:
       - name: Install idb (taps system dialogs)
         run: |
           brew tap facebook/fb >/dev/null
-          brew install idb-companion >/dev/null 2>&1 || brew install idb-companion
+          brew trust facebook/fb >/dev/null 2>&1 || true   # newer Homebrew refuses untrusted taps
+          brew install facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion
           pipx install fb-idb >/dev/null 2>&1 || python3 -m pip install --user --break-system-packages fb-idb
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           command -v idb || ls ~/.local/bin
