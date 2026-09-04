@@ -733,7 +733,7 @@ class _SyncPageState extends State<SyncPage> {
     final progress = _progress;
     final live = (stats != null && _syncing && progress != null)
         ? DeviceStats(stats.totalOnDevice,
-            (stats.backedUp + progress.uploaded + progress.skipped).clamp(0, stats.totalOnDevice))
+            (stats.backedUp + progress.uploaded + progress.skipped).clamp(0, stats.totalOnDevice).toInt())
         : stats;
     return Scaffold(
       appBar: AppBar(

@@ -22,6 +22,10 @@ jobs:
 
       - run: flutter pub get
 
+      # compile errors surface here by name; `flutter build ios` hides them behind a
+      # generic "select a Development Team" hint when the Xcode build fails
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
       - run: flutter build ios --release --no-codesign
 
       # package the .app into an unsigned .ipa (Payload zip) for Sideloadly
