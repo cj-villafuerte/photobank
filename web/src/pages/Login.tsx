@@ -61,9 +61,6 @@ export default function Login() {
     <div className="auth-wrap">
       <form className="auth-card" onSubmit={submit}>
         <h1>Photobank</h1>
-        <div className="mono" style={{ color: "var(--faint)", fontSize: 10, textAlign: "center", marginTop: -4 }}>
-          by CJ Villafuerte
-        </div>
         {demo && (
           <p className="muted" style={{ fontSize: "0.85rem", textAlign: "center", margin: "4px 0 8px" }}>
             Public demo server — the shared account is filled in. The sample library is

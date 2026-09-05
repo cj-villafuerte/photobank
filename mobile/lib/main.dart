@@ -487,8 +487,6 @@ class _SetupPageState extends State<SetupPage> {
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 6),
-                Text('BY CJ VILLAFUERTE', textAlign: TextAlign.center, style: pbMono(size: 10)),
                 const SizedBox(height: 28),
                 // why we are back here, when the app brought us here itself
                 if (widget.notice != null && !_noticeDismissed) ...[

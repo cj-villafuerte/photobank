@@ -168,7 +168,7 @@ function NavBar({ user }: { user: User }) {
   if (isConsoleOnly(user)) {
     return (
       <nav className="nav">
-        <span className="brand">Photobank<small>by CJ Villafuerte</small></span>
+        <span className="brand">Photobank</span>
         <span className="mono muted" style={{ fontSize: 10 }}>Administrator · this computer</span>
         <span className="spacer" />
         <button onClick={viewAsMember}>View as member…</button>
@@ -177,7 +177,7 @@ function NavBar({ user }: { user: User }) {
   }
   return (
     <nav className="nav">
-      <span className="brand">Photobank<small>by CJ Villafuerte</small></span>
+      <span className="brand">Photobank</span>
       {admin && (
         <NavLink to="/console" className={({ isActive }) => `navlink${isActive ? " active" : ""}`}>
           Console

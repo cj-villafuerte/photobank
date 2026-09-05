@@ -45,7 +45,9 @@ Mobile: title 28, section 20, body 15, eyebrow 11, tag 10.
 - Photo grid: square, cover-cropped, 2px gutters; selection = 2px `ink` inset outline + ink check;
   badges = `ink` at 80% with `paper` mono text; favorite = accent rounded square (the logo period).
 - Eyebrow pattern: `01  PROFILE` — number in accent, label in faint, both mono medium.
-- Wordmark: `Photobank.` display 700, period in accent; tag `BY CJ VILLAFUERTE` mono faint.
+- Wordmark: `Photobank.` display 700, period in accent. No maker tag next to it: the credit
+  lives in the website footer, README, PRIVACY.md and one mono line at the end of the phone's
+  Settings.
 
 ## Deviation for apps
 The brief's "no icons" rule is for compositions; touch UIs keep a minimal functional set

@@ -14,6 +14,7 @@ import 'duplicates_page.dart';
 import 'library_page.dart';
 import 'notifications.dart';
 import 'onboarding_page.dart';
+import 'theme.dart';
 import 'trash_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -531,6 +532,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 24),
+          // the one place the credit lives in the app
+          Center(
+            child: Text('PHOTOBANK  ·  MADE BY CJ VILLAFUERTE  ·  OPEN SOURCE, MIT',
+                textAlign: TextAlign.center, style: pbMono(size: 9)),
           ),
           const SizedBox(height: 32),
           if (_hiddenRevealed) ...[
