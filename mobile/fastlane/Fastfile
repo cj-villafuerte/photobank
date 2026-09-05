@@ -68,8 +68,8 @@ platform :ios do
       precheck_include_in_app_purchases: false,
       force: true,                     # no HTML preview prompt (CI)
     )
+    # no api_key option here: it authenticates with the token app_store_connect_api_key set
     upload_app_privacy_details_to_app_store(
-      api_key: key,
       json_path: "fastlane/app_privacy_details.json",
       skip_publish: false,
     )
