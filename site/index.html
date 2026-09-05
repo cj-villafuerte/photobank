@@ -137,8 +137,37 @@
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm5 18.2a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM7 5v12h10V5z"/></svg>
           <span>iPhone app<br /><span class="sub">App Store · in review</span></span>
         </a>
-        <span class="note">Windows: unzip, run <code>Photobank.exe</code> (SmartScreen: More info → Run anyway). macOS: unzip, drag to Applications, right-click → Open the first time. Every build comes from the public <a href="https://github.com/cj-villafuerte/photobank/releases">Releases</a> page.</span>
+        <span class="note" id="release-line">Every build comes from the public <a href="https://github.com/cj-villafuerte/photobank/releases">Releases</a> page.</span>
+        <span class="note">Windows: unzip, run <code>Photobank.exe</code> (SmartScreen: More info → Run anyway). macOS: unzip, drag to Applications, right-click → Open the first time.</span>
       </div>
+      <script>
+        // The buttons already follow /releases/latest; this line says which version that is,
+        // and offers the rolling development build. Best effort - the page is complete without it.
+        (async () => {
+          try {
+            const r = await fetch("https://api.github.com/repos/cj-villafuerte/photobank/releases?per_page=15", { headers: { Accept: "application/vnd.github+json" } });
+            if (!r.ok) return;
+            const rels = await r.json();
+            const stable = rels.find(x => !x.prerelease && !x.draft);
+            const dev = rels.find(x => x.tag_name === "dev");
+            const when = x => new Date(x.published_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+            const mb = (rel, name) => { const a = rel.assets.find(a => a.name === name); return a ? ` (${Math.round(a.size / 1048576)} MB)` : ""; };
+            const parts = [];
+            if (stable) {
+              parts.push(`Latest release <strong>${stable.tag_name}</strong> · ${when(stable)}` +
+                `${mb(stable, "Photobank-Windows.zip") ? " · Windows" + mb(stable, "Photobank-Windows.zip") : ""}` +
+                `${mb(stable, "Photobank-macOS.zip") ? " · macOS" + mb(stable, "Photobank-macOS.zip") : ""}`);
+            }
+            if (dev) {
+              const w = dev.assets.find(a => a.name === "Photobank-Windows.zip"), m = dev.assets.find(a => a.name === "Photobank-macOS.zip");
+              const links = [w && `<a href="${w.browser_download_url}">Windows</a>`, m && `<a href="${m.browser_download_url}">macOS</a>`].filter(Boolean).join(" · ");
+              if (links) parts.push(`Development build from ${when(dev)}: ${links}`);
+            }
+            if (parts.length) document.getElementById("release-line").innerHTML = parts.join("<br />") +
+              ' · <a href="https://github.com/cj-villafuerte/photobank/releases">all releases</a>';
+          } catch (_) { /* offline or rate-limited: the static line stands */ }
+        })();
+      </script>
 
       <div class="shots">
         <figure class="desktop">

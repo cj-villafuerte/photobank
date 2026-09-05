@@ -1,12 +1,28 @@
 name: Release (Windows + macOS + iOS)
 
+# Tags v* -> a versioned release (what the website's download buttons point at via
+# /releases/latest). Every push to main that touches an app -> the rolling "dev"
+# pre-release is rebuilt, so a current build is always downloadable too.
 on:
   push:
     tags: ["v*"]
+    branches: [main]
+    paths:
+      - "server/**"
+      - "web/**"
+      - "mobile/**"
+      - "scripts/build-desktop.*"
+      - "scripts/macos-entitlements.plist"
+      - "assets/icon/**"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   windows:
@@ -100,3 +116,29 @@ jobs:
             Photobank-macOS.zip
             Photobank-iOS-unsigned.ipa
           generate_release_notes: true
+
+  # main: move the `dev` tag to this commit and replace the pre-release's assets
+  dev-build:
+    needs: [windows, macos, ios]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v5
+      - name: Point the dev tag at this commit
+        run: |
+          git tag -f dev "$GITHUB_SHA"
+          git push -f origin refs/tags/dev
+      - uses: actions/download-artifact@v5
+        with: { merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev
+          name: Development build
+          prerelease: true
+          body: |
+            The newest build of `main` (${{ github.sha }}), refreshed on every push.
+            Not a release: for the stable version use the latest tagged release.
+          files: |
+            Photobank-Windows.zip
+            Photobank-macOS.zip
+            Photobank-iOS-unsigned.ipa

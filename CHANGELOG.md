@@ -1,8 +1,11 @@
 # Changelog
 
-## 0.2.0 — 2026-09-04 (unreleased)
+## 0.2.0 — 2026-09-05
 
 ### Added
+- **Website** (`site/`, GitHub Pages): downloads, how it works, features, demo, privacy,
+  credits. Download buttons follow `/releases/latest`; a rolling `dev` pre-release is
+  rebuilt on every push to `main`.
 - **Demo mode** (`DEMO_MODE=true`): one shared read-only account, a generated sample library
   with real EXIF dates, image uploads that are removed after a minute, phone-safe (`exists`
   never confirms uploads), admin/backup/password endpoints off. `Dockerfile` + `railway.json`;
@@ -28,7 +31,10 @@
 - Desktop: the administrator's app is the Console only - no Library / Albums / Search /
   Duplicates / Dashboard / Trash / Settings for an account that owns no photos here. The
   nav is brand + "View as member…"; every route lands on the Console, and the window
-  always opens on it (the administrator is signed in before anything renders).
+  always opens on it (the administrator is signed in before anything renders). Closing
+  the window quits: the server stops with it.
+- TestFlight workflow: one persistent development certificate for the archive step
+  instead of a new one per run (Apple's certificate limit).
 - iPhone: the Library's source filter only chooses which photos show - All / Server /
   Phone, with "Not backed up only" in the Phone view's menu - and a backed-up photo
   always opens as its server copy with favorites, albums and playback. Backing up from a
