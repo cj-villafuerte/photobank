@@ -35,6 +35,8 @@
   the window quits: the server stops with it.
 - TestFlight workflow: one persistent development certificate for the archive step
   instead of a new one per run (Apple's certificate limit).
+- iOS: iPhone only (`TARGETED_DEVICE_FAMILY = 1`). The layout is a phone layout; iPad
+  support would have meant iPad screenshots and review on a stretched UI.
 - iPhone: the Library's source filter only chooses which photos show - All / Server /
   Phone, with "Not backed up only" in the Phone view's menu - and a backed-up photo
   always opens as its server copy with favorites, albums and playback. Backing up from a
