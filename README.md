@@ -24,7 +24,7 @@ Grab the latest build from **[Releases](https://github.com/cj-villafuerte/photob
 | Platform | File | Notes |
 |---|---|---|
 | Windows 10/11 | `Photobank-Windows.zip` | unzip, run `Photobank.exe` (SmartScreen: More info → Run anyway) |
-| macOS 13+ | `Photobank-macOS.zip` | unzip, drag to Applications, right-click → Open the first time |
+| macOS 13+ | `Photobank-macOS.zip` | unzip, drag to Applications, open (Developer ID signed + notarized) |
 | iPhone | TestFlight / App Store (coming) | meanwhile: `Photobank-iOS-unsigned.ipa`, sideloaded with [Sideloadly](https://sideloadly.io) |
 
 Optional helpers for video thumbnails and text search: `winget install Gyan.FFmpeg` +
@@ -133,9 +133,10 @@ member's library inside the same window, exactly as that member sees it (no admi
 controls) - "Sign out" brings the administrator straight back to the Console.
 
 - **Windows:** `.\scripts\build-desktop.ps1` → `server\dist\Photobank\Photobank.exe`
-- **macOS:** built by GitHub Actions (`Build macOS desktop app` workflow) → download
-  `photobank-macos` artifact → unzip → drag `Photobank.app` to Applications. First launch:
-  right-click → Open (unsigned app). Install helpers with `brew install ffmpeg tesseract`.
+- **macOS:** built by GitHub Actions (release workflow) → `Photobank-macOS.zip` → unzip →
+  drag `Photobank.app` to Applications and open it. Releases are signed with a Developer ID
+  and notarized by Apple, so Gatekeeper shows no warning. Install helpers with
+  `brew install ffmpeg tesseract`.
   Data lives in `~/Library/Application Support/Photobank`, photos in `~/Pictures/Photobank`.
 - Or locally on a Mac: `bash scripts/build-desktop.sh`.
 - **Signed & notarized macOS builds** (no right-click → Open): add two repository secrets and
